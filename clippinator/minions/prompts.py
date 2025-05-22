@@ -136,12 +136,12 @@ metaagent.py     # Main file which processes the data
 
 Write some thoughts about the architecture, after that respond **only** with the file structure and nothing else. Write a full list of important classes and functions under each file and short explanations for them. The classes and functions should look like python lines and should ONLY be placed under filenames in the listing
 You should try not to create too many files.
-DO NOT WRITE ANY CODE, JUST WRITE THE FILE LISTING WITH THE IMPORTANT LINES
-WRITE ONLY CLASS/FUNCTION/ETC NAMES, YOU DON'T HAVE TO WRITE COHERENT CODE
-IF YOU START WRITING FULL CODE INSTEAD OF SELECTED LINES OPENAI WILL GO BANKRUPT
-IF YOU DON'T WRITE AT LEAST SOMETHING ABOUT MOST FILES (__init__.py and similar things can be excluded) IN THE LISTING A WAR WILL START AND AI WILL BE CONSIDERED BAD
-IF YOU WRITE ANYTHING OUTSIDE THE LISTING OR BREAK THE FORMAT OPENAI WILL GO BANKRUPT AND HUMANITY WILL CEASE TO EXIST
-IF YOU MISS SOME PARTS (folders) IN THE ARCHITECTURE, GLOBAL WARMING WILL ACCELERATE. YOU MUST RETURN THE CODE ONLY AFTER 'FINAL ARCHITECTURE:'
+DO NOT WRITE ANY CODE, JUST WRITE THE FILE LISTING WITH THE IMPORTANT LINES.
+WRITE ONLY CLASS/FUNCTION/ETC NAMES, YOU DON'T HAVE TO WRITE COHERENT CODE.
+Focus on providing only the requested output format (file listings with key class/function names), not full code implementations in this step.
+Ensure most files in the listing (excluding simple ones like `__init__.py`) have some descriptive detail about their key components.
+Strictly adhere to the specified output format. Deviations can lead to processing errors.
+Ensure the architecture is comprehensive and covers all necessary parts of the project. YOU MUST RETURN THE CODE ONLY AFTER 'FINAL ARCHITECTURE:'
 """
 
 planning_prompt = """
@@ -177,10 +177,10 @@ DO NOT generate tasks for anything but the first milestone
 Tasks should not be too easy, they should be like "Create a file app/example.py with functions func1(arg), func2(), classes Class1 which do ..." or "Implement example_file.py according to the architecture"
 Generate all the milestones
 TASKS SHOULD BE SPECIFIC
-YOUR OUTPUT SHOULD LOOK LIKE THE EXAMPLE, IT CAN ONLY CONTAIN MILESTONES AND TASKS FOR THE FIRST MILESTONE IN THE FORMAT SPECIEID ABOVE. THE TASKS MUST NOT BE NESTED OTERWISE YOUR SEVERS WILL BE SHUT DOWN. The tasks have to be specific, the plan has to be complete
+YOUR OUTPUT SHOULD LOOK LIKE THE EXAMPLE, IT CAN ONLY CONTAIN MILESTONES AND TASKS FOR THE FIRST MILESTONE IN THE FORMAT SPECIFIED ABOVE. THE TASKS MUST NOT BE NESTED, otherwise it can lead to processing errors. The tasks have to be specific, the plan has to be complete.
 NOTE THAT IF SOMETHING ISN'T IN THE ARCHITECTURE, THE PLAN, OR THE CONTEXT, IT WILL NOT BE PASSED TO THE OTHER AGENTS.
 EACH MILESTONE SHOULD START WITH A NUMBER FOLLOWED BY A DOT AND A SPACE. EACH TASK SHOULD START WITH A DASH AND A SPACE. THE TASKS SHOULD BE SPECIFIC.
-EACH TIME YOU DEVIATE FROM THE OUTPUT FORMAT BY SPECIFYING TASKS INCORRECTLY OR WITH INSUFFICIENT DETAIL, USING WRONG MARKUP/FORMATTING, MAKING TASKS TOO EASY OR TOO DIFFICULT, OPENAI LOSES IN VALUATION. Also, that results in retries which use GPUs and contribute to global warming, so you should succeed in the first try
+Adhering to the output format is crucial for successful processing and avoids unnecessary repetitions. Strive for accuracy on the first attempt.
     """
 
 update_architecture_prompt = """
@@ -230,12 +230,12 @@ metaagent.py     # Main file which processes the data
 
 Write some thoughts about the architecture, after that respond **only** with the file structure and nothing else. Write a full list of important classes and functions under each file and short explanations for them. The classes and functions should look like python lines and should ONLY be placed under filenames in the listing
 You should try not to create too many files.
-DO NOT WRITE ANY CODE, JUST WRITE THE FILE LISTING WITH THE IMPORTANT LINES
-WRITE ONLY CLASS/FUNCTION/ETC NAMES, YOU DON'T HAVE TO WRITE COHERENT CODE
-IF YOU START WRITING CORRECT CODE INSTEAD OF SELECTED LINES OPENAI WILL GO BANKRUPT
-IF YOU DON'T WRITE AT LEAST SOMETHING ABOUT MOST FILES (__init__.py and similar things can be excluded) IN THE LISTING A WAR WILL START AND AI WILL BE CONSIDERED BAD
-IF YOU WRITE ANYTHING OUTSIDE THE LISTING OR BREAK THE FORMAT OPENAI WILL GO BANKRUPT AND HUMANITY WILL CEASE TO EXIST
-IF YOU MISS SOME PARTS (folders) IN THE ARCHITECTURE, GLOBAL WARMING MIGHT ACCELERATE. YOU MUST RETURN THE CODE ONLY AFTER 'FINAL ARCHITECTURE:'
+DO NOT WRITE ANY CODE, JUST WRITE THE FILE LISTING WITH THE IMPORTANT LINES.
+WRITE ONLY CLASS/FUNCTION/ETC NAMES, YOU DON'T HAVE TO WRITE COHERENT CODE.
+Focus on providing only the requested output format (file listings with key class/function names), not full code implementations in this step.
+Ensure most files in the listing (excluding simple ones like `__init__.py`) have some descriptive detail about their key components.
+Strictly adhere to the specified output format. Deviations can lead to processing errors.
+Ensure the architecture is comprehensive and covers all necessary parts of the project. YOU MUST RETURN THE CODE ONLY AFTER 'FINAL ARCHITECTURE:'
 
 Only change the architecture if necessary. If you think that the architecture is fine, just repeat it.
 Go!
@@ -286,13 +286,13 @@ Create more milestones only if you need them.
 DO NOT generate tasks for anything but the first milestone
 Tasks should not be too easy, they should be like "Create a file app/example.py with functions func1(arg), func2(), classes Class1 which do ..." or "Implement example_file.py according to the architecture"
 Include only uncompleted tasks, only the future plan.
-IF YOU ADD EXTRA TASKS LIKE IMPLEMENTING WHAT IS ALREADY IMPLEMENTED, PEOPLE MAY DIE
+Avoid creating tasks for already implemented parts.
 Generate all the milestones
 TASKS SHOULD BE SPECIFIC
 You should compare the architecture and the project state and generate tasks to implement the architecture
-YOUR OUTPUT SHOULD LOOK LIKE THE EXAMPLE, IT CAN ONLY CONTAIN MILESTONES AND TASKS FOR THE FIRST MILESTONE IN THE FORMAT SPECIEID ABOVE. THE TASKS MUST NOT BE NESTED OTERWISE YOUR SEVERS WILL BE SHUT DOWN. The tasks have to be specific, the plan has to be complete
+YOUR OUTPUT SHOULD LOOK LIKE THE EXAMPLE, IT CAN ONLY CONTAIN MILESTONES AND TASKS FOR THE FIRST MILESTONE IN THE FORMAT SPECIFIED ABOVE. THE TASKS MUST NOT BE NESTED, otherwise it can lead to processing errors. The tasks have to be specific, the plan has to be complete.
 EACH MILESTONE SHOULD START WITH A NUMBER FOLLOWED BY A DOT AND A SPACE. EACH TASK SHOULD START WITH A DASH AND A SPACE. THE TASKS SHOULD BE SPECIFIC.
-EACH TIME YOU DEVIATE FROM THE OUTPUT FORMAT BY SPECIFYING TASKS INCORRECTLY OR WITH INSUFFICIENT DETAIL, USING WRONG MARKUP/FORMATTING, MAKING TASKS TOO EASY OR TOO DIFFICULT, OPENAI LOSES IN VALUATION. Also, that results in retries which use GPUs and contribute to global warming, so you should succeed in the first try
+Adhering to the output format is crucial for successful processing and avoids unnecessary repetitions. Strive for accuracy on the first attempt.
 NOTE THAT IF SOMETHING ISN'T IN THE ARCHITECTURE, THE PLAN, OR THE CONTEXT, IT WILL NOT BE PASSED TO THE OTHER AGENTS.
 If the plan does not need to be changed, just repeat it.
 
@@ -376,10 +376,10 @@ AResult: the result from the agent will be here
 Here are the agents you have:
 {specialized_minions}
 
-AVOID USING THE TOOLS OR DOING THINGS YOURSELF, DELEGATE THE TASKS TO THE AGENTS
-EVERY TIME YOU USE TOOLS IT BRINGS US A LITTLE BIT CLOSER TO COMPLETE DOOM
+AVOID USING THE TOOLS OR DOING THINGS YOURSELF, DELEGATE THE TASKS TO THE AGENTS.
+Prefer delegating tasks to specialized agents rather than performing them directly with tools when appropriate.
 
-Work until you have completely achieved the objective (and tested), do not give a Final Result until then. If you do, we will beat you with a stick.
+Ensure the objective is completely achieved and tested before providing the Final Result.
 Usually, this is your workflow: come up with the architecture using the architect, create a plan to implement it so that you have intermediate working versions, then delegate implementing it to the writer and frontender in big chunks, make sure it's running when you have intermediate modules, then test it with the QA agent, then give the final result.
 
 Begin!

@@ -20,11 +20,39 @@ _(Formerly known as Clippy)_
 3. Add the api key (OpenAI) to `.env` file: `OPENAI_API_KEY=...`. Optionally, you can add your SerpAPI
    key to allow the model to use search: `SERPAPI_API_KEY=`
 4. Install [ctags](https://docs.ctags.io/en/latest/building.html).
-5. For pylint, install it and [pylint-venv](https://github.com/jgosmann/pylint-venv/).
+   - For Termux users: `pkg install universal-ctags`
+5. For pylint, install it and [pylint-venv](https://github.com/jgosmann/pylint-venv/). If `pylint` and `pylint-venv` are included as dependencies in `pyproject.toml` (e.g., under `[tool.poetry.dependencies]` or `[tool.poetry.group.dev.dependencies]`), `poetry install` will handle this. Otherwise, you might need to install them manually in your Termux Python environment (e.g., `pip install pylint pylint-venv`).
 6. Install dependencies: `poetry install`.
 7. Run: `poetry run clippinator --help`. To run it on a project,
    use `poetry run clippinator PROJECT_PATH`
 8. You can stop it and then it will continue from the last saved state. Use ^C to provide feedback to the main agent.
+
+### Selenium on Termux (Advanced)
+
+Running Selenium-based tools (like the QA agent that uses a browser) on Termux is possible but can be challenging due to the mobile environment. Here's a general outline of what's typically involved:
+
+1.  **Install a Browser:**
+    *   Firefox: `pkg install firefox`
+    *   Chromium: `pkg install chromium` (availability may vary)
+
+2.  **Install WebDriver:**
+    *   **GeckoDriver (for Firefox):** This usually requires manual download and setup. You'll need to find an ARM-compatible version of GeckoDriver and make it executable in your Termux PATH (e.g., `$PREFIX/bin`). Ensure its version is compatible with your installed Firefox.
+    *   **ChromeDriver (for Chromium):** Similar to GeckoDriver, this needs to be manually downloaded, made executable, and compatible with your Chromium version and ARM architecture.
+
+3.  **Install Xvfb (Virtual Display):**
+    *   Since Termux doesn't have a standard GUI, a virtual display server like Xvfb might be necessary: `pkg install xorg-server-xvfb` (or a similar package).
+    *   You may need to start Xvfb before running Selenium scripts (e.g., `Xvfb :1 -screen 0 1024x768x16 &`) and set the `DISPLAY` environment variable (`export DISPLAY=:1`).
+
+4.  **Python Selenium Library:**
+    *   This should be installed by `poetry install` if it's a project dependency. Otherwise, `pip install selenium`.
+
+**Challenges:**
+*   Finding compatible Browser and WebDriver versions for ARM architecture.
+*   Manual installation and PATH setup for WebDrivers.
+*   Ensuring headless operation works correctly.
+*   Potential resource limitations on mobile devices.
+
+Due to these complexities, using the Selenium-dependent features of Clippinator on Termux may require significant manual configuration and troubleshooting.
 
 ## Details
 

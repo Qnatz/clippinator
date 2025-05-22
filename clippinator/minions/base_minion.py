@@ -135,12 +135,30 @@ def extract_variable_names(prompt: str, interaction_enabled: bool = False):
     return variable_names
 
 
-def get_model(model: str = "gpt-4-1106-preview"):
-    return ChatOpenAI(
-        temperature=0.05 if model != "gpt-3.5-turbo" else 0.7,
-        model_name=model,
-        request_timeout=320,
-    )
+def get_model(model_name: str = "gpt-4-1106-preview", model_provider: str = "openai"):
+    if model_provider == "openai":
+        return ChatOpenAI(
+            temperature=0.05 if model_name != "gpt-3.5-turbo" else 0.7,
+            model_name=model_name,
+            request_timeout=320,
+        )
+    elif model_provider == "anthropic":
+        return ChatAnthropic(
+            model=model_name, # Anthropic uses 'model'
+            # request_timeout=320, # ChatAnthropic might not have this param
+        )
+    elif model_provider == "deepseek":
+        deepseek_api_url = os.environ.get("DEEPSEEK_API_URL", "http://localhost:8000/v1")
+        deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY", "NA")
+        return ChatOpenAI( # Use ChatOpenAI for Deepseek as it's OpenAI compatible
+            openai_api_base=deepseek_api_url,
+            openai_api_key=deepseek_api_key,
+            model_name=model_name,
+            temperature=0.05, # Default temperature
+            request_timeout=320,
+        )
+    else:
+        raise ValueError(f"Unsupported model_provider: {model_provider}")
 
 
 @dataclass
@@ -148,8 +166,8 @@ class BasicLLM:
     prompt: PromptTemplate
     llm: LLMChain
 
-    def __init__(self, base_prompt: str, model: str = "gpt-4-1106-preview") -> None:
-        llm = get_model(model)
+    def __init__(self, base_prompt: str, model_name: str = "gpt-4-1106-preview", model_provider: str = "openai") -> None:
+        llm = get_model(model_name=model_name, model_provider=model_provider)
         self.llm = LLMChain(
             llm=llm,
             prompt=PromptTemplate(
@@ -278,11 +296,12 @@ class BaseMinion:
             self,
             base_prompt,
             available_tools,
-            model: str = "gpt-4-1106-preview",
+            model_name: str = "gpt-4-1106-preview", # Renamed model to model_name
+            model_provider: str = "openai", # Added model_provider
             max_iterations: int = 50,
             allow_feedback: bool = False,
     ) -> None:
-        llm = get_model(model)
+        llm = get_model(model_name=model_name, model_provider=model_provider)
 
         agent_toolnames = [tool.name for tool in available_tools]
         available_tools.append(WarningTool().get_tool())
@@ -337,10 +356,14 @@ class BaseMinion:
 
 @dataclass
 class BaseMinionOpenAI:
-    def __init__(self, base_prompt, available_tools, model: str = "gpt-4-1106-preview") -> None:
-        if not model.endswith('-0613'):
-            model += '-0613'
-        llm = get_model(model)
+    def __init__(self, base_prompt, available_tools, model_name: str = "gpt-4-1106-preview") -> None: # Renamed model to model_name
+        # This class is OpenAI specific, so we hardcode the provider
+        # but ensure the model name passed is used correctly.
+        model_to_use = model_name
+        # only ensure -0613 for gpt-4 models, this logic might need adjustment if other openai models are used
+        if "gpt-4" in model_to_use and not model_to_use.endswith('-0613'): 
+            model_to_use += '-0613'
+        llm = get_model(model_name=model_to_use, model_provider="openai")
         agent_toolnames = [tool.name for tool in available_tools]
         prompt = CustomPromptTemplate(
             template=base_prompt,
@@ -397,9 +420,10 @@ class FeedbackMinion:
             eval_prompt: str,
             feedback_prompt: str,
             check_function: Callable[[str], Any] = lambda x: None,
-            model: str = "gpt-4-1106-preview",
+            model_name: str = "gpt-4-1106-preview", # Renamed model to model_name
+            model_provider: str = "openai", # Added model_provider
     ) -> None:
-        llm = get_model(model)
+        llm = get_model(model_name=model_name, model_provider=model_provider)
         self.eval_llm = LLMChain(
             llm=llm,
             prompt=PromptTemplate(
