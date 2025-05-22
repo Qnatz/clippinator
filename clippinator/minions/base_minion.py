@@ -13,8 +13,8 @@ from langchain.agents import (
     LLMSingleActionAgent,
     AgentOutputParser,
 )
-from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
+# Removed OpenAIFunctionsAgent, ChatOpenAI, ChatAnthropic
+from langchain_community.llms import LlamaCpp # Added LlamaCpp import
 from langchain.prompts import StringPromptTemplate
 from langchain.schema import AgentAction, AgentFinish
 
@@ -134,41 +134,30 @@ def extract_variable_names(prompt: str, interaction_enabled: bool = False):
         variable_names.append("intermediate_steps")
     return variable_names
 
-
-def get_model(model_name: str = "gpt-4-1106-preview", model_provider: str = "openai"):
-    if model_provider == "openai":
-        return ChatOpenAI(
-            temperature=0.05 if model_name != "gpt-3.5-turbo" else 0.7,
-            model_name=model_name,
-            request_timeout=320,
-        )
-    elif model_provider == "anthropic":
-        return ChatAnthropic(
-            model=model_name, # Anthropic uses 'model'
-            # request_timeout=320, # ChatAnthropic might not have this param
-        )
-    elif model_provider == "deepseek":
-        deepseek_api_url = os.environ.get("DEEPSEEK_API_URL", "http://localhost:8000/v1")
-        deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY", "NA")
-        print(f"[INFO] Attempting to connect to Deepseek server at: {deepseek_api_url} with model_name: {model_name}")
-        return ChatOpenAI( # Use ChatOpenAI for Deepseek as it's OpenAI compatible
-            openai_api_base=deepseek_api_url,
-            openai_api_key=deepseek_api_key,
-            model_name=model_name,
-            temperature=0.05, # Default temperature
-            request_timeout=320,
-        )
-    else:
-        raise ValueError(f"Unsupported model_provider: {model_provider}")
-
+# Removed get_model function
 
 @dataclass
 class BasicLLM:
     prompt: PromptTemplate
     llm: LLMChain
 
-    def __init__(self, base_prompt: str, model_name: str = "gpt-4-1106-preview", model_provider: str = "openai") -> None:
-        llm = get_model(model_name=model_name, model_provider=model_provider)
+    def __init__(self, base_prompt: str, 
+                 model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+                 n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
+                 n_batch: int = int(os.environ.get("N_BATCH", 512)),
+                 n_ctx: int = int(os.environ.get("N_CTX", 2048)),
+                 temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+                 max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
+                 ) -> None:
+        llm = LlamaCpp(
+            model_path=model_path,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            verbose=True # Assuming verbosity is desired for LlamaCpp
+        )
         self.llm = LLMChain(
             llm=llm,
             prompt=PromptTemplate(
@@ -313,15 +302,27 @@ class BaseMinion:
             self,
             base_prompt,
             available_tools,
-            model_name: str = "gpt-4-1106-preview", 
-            model_provider: str = "openai", 
             max_iterations: int = 50,
             allow_feedback: bool = False,
-            max_context_length: int = 5, # Added
-            keep_n_last_thoughts: int = 2, # Added
+            max_context_length: int = 5,
+            keep_n_last_thoughts: int = 2,
+            # LlamaCpp specific parameters with defaults from environment variables
+            model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+            n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
+            n_batch: int = int(os.environ.get("N_BATCH", 512)),
+            n_ctx: int = int(os.environ.get("N_CTX", 2048)),
+            temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+            max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
     ) -> None:
-        llm = get_model(model_name=model_name, model_provider=model_provider)
-
+        llm = LlamaCpp(
+            model_path=model_path,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            verbose=True # Assuming verbosity is desired
+        )
         agent_toolnames = [tool.name for tool in available_tools]
         # Create a new list for tools to avoid modifying the original list if passed around
         extended_tools = list(available_tools)
@@ -384,62 +385,7 @@ class BaseMinion:
                 self.prompt.intermediate_steps += [feedback]
             return self.run(**kwargs)
 
-
-@dataclass
-class BaseMinionOpenAI:
-    def __init__(self, base_prompt, available_tools, model_name: str = "gpt-4-1106-preview") -> None: # Renamed model to model_name
-        # This class is OpenAI specific, so we hardcode the provider
-        # but ensure the model name passed is used correctly.
-        model_to_use = model_name
-        # only ensure -0613 for gpt-4 models, this logic might need adjustment if other openai models are used
-        if "gpt-4" in model_to_use and not model_to_use.endswith('-0613'): 
-            model_to_use += '-0613'
-        llm = get_model(model_name=model_to_use, model_provider="openai")
-        agent_toolnames = [tool.name for tool in available_tools]
-        # For BaseMinionOpenAI, we use default context length parameters for CustomPromptTemplate
-        # If these need to be configurable for BaseMinionOpenAI as well, they should be added to its __init__
-        prompt = CustomPromptTemplate(
-            template=base_prompt,
-            tools=available_tools, # Assuming BaseMinionOpenAI doesn't need WarningTool added again if already in available_tools
-            input_variables=extract_variable_names(
-                base_prompt
-            ),
-            agent_toolnames=agent_toolnames,
-            # max_context_length and keep_n_last_thoughts will use defaults (5, 2)
-        )
-        agent = OpenAIFunctionsAgent(llm=llm, prompt=prompt, tools=available_tools)
-        # self.agent_executor = initialize_agent(available_tools, llm, agent=AgentType.OPENAI_FUNCTIONS, verbose=True,
-        #                                        prompt=prompt)
-        self.agent_executor = AgentExecutor.from_agent_and_tools(
-            agent=agent,
-            tools=available_tools,
-            verbose=True,
-            max_iterations=50,
-        )
-
-    def run(self, **kwargs):
-        kwargs["feedback"] = kwargs.get("feedback", "")
-        kwargs["format_description"] = ''
-        kwargs['input'] = ''
-        initial_temperature = 0
-        if 'temperature' in kwargs:
-            try:
-                initial_temperature = self.agent_executor.agent.llm.temperature
-                self.agent_executor.agent.llm.temperature = kwargs['temperature']
-            except AttributeError:
-                pass
-        try:
-            result = (
-                    self.agent_executor.run(**kwargs)
-                    or "No result. The execution was probably unsuccessful."
-            )
-            self.agent_executor.agent.llm.temperature = initial_temperature
-            return result
-        except langchain.schema.OutputParserException as e:
-            print(e)
-            kwargs['temperature'] = 0.7
-            return self.run(**kwargs)
-
+# Removed BaseMinionOpenAI class
 
 @dataclass
 class FeedbackMinion:
@@ -454,12 +400,25 @@ class FeedbackMinion:
             eval_prompt: str,
             feedback_prompt: str,
             check_function: Callable[[str], Any] = lambda x: None,
-            model_name: str = "gpt-4-1106-preview", # Renamed model to model_name
-            model_provider: str = "openai", # Added model_provider
+            # LlamaCpp specific parameters for the evaluation LLM
+            model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+            n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
+            n_batch: int = int(os.environ.get("N_BATCH", 512)),
+            n_ctx: int = int(os.environ.get("N_CTX", 2048)),
+            temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+            max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
     ) -> None:
-        llm = get_model(model_name=model_name, model_provider=model_provider)
+        eval_llm_instance = LlamaCpp(
+            model_path=model_path,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            verbose=True # Assuming verbosity for eval LLM
+        )
         self.eval_llm = LLMChain(
-            llm=llm,
+            llm=eval_llm_instance,
             prompt=PromptTemplate(
                 template=eval_prompt,
                 input_variables=extract_variable_names(eval_prompt),
