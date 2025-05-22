@@ -150,6 +150,7 @@ def get_model(model_name: str = "gpt-4-1106-preview", model_provider: str = "ope
     elif model_provider == "deepseek":
         deepseek_api_url = os.environ.get("DEEPSEEK_API_URL", "http://localhost:8000/v1")
         deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY", "NA")
+        print(f"[INFO] Attempting to connect to Deepseek server at: {deepseek_api_url} with model_name: {model_name}")
         return ChatOpenAI( # Use ChatOpenAI for Deepseek as it's OpenAI compatible
             openai_api_base=deepseek_api_url,
             openai_api_key=deepseek_api_key,
@@ -186,8 +187,8 @@ class CustomPromptTemplate(StringPromptTemplate):
     # The list of tools available
     tools: List[Tool]
     agent_toolnames: List[str]
-    max_context_length: int = 5
-    keep_n_last_thoughts: int = 2
+    # max_context_length: int = 5 # Now an instance variable
+    # keep_n_last_thoughts: int = 2 # Now an instance variable
     current_context_length: int = 0
     model_steps_processed: int = 0
     all_steps_processed: int = 0
@@ -196,6 +197,21 @@ class CustomPromptTemplate(StringPromptTemplate):
     project: Any | None = None
     intermediate_steps: list[(AgentAction, str)] = []
     hook: Callable[[CustomPromptTemplate], None] | None = None
+
+    def __init__(self, *, template: str, tools: List[Tool], agent_toolnames: List[str], 
+                 input_variables: List[str], max_context_length: int = 5, keep_n_last_thoughts: int = 2, 
+                 project: Any | None = None, my_summarize_agent: Any = None, 
+                 hook: Callable[[CustomPromptTemplate], None] | None = None):
+        super().__init__(template=template, tools=tools, agent_toolnames=agent_toolnames, 
+                         input_variables=input_variables) # Pass relevant args to parent
+        self.max_context_length = max_context_length
+        self.keep_n_last_thoughts = keep_n_last_thoughts
+        self.project = project # Ensure these are initialized if they are class attributes potentially accessed before format
+        self.my_summarize_agent = my_summarize_agent
+        self.last_summary = "" # Initialize last_summary
+        self.hook = hook
+        print(f"[INFO] CustomPromptTemplate initialized with max_context_length={self.max_context_length}, keep_n_last_thoughts={self.keep_n_last_thoughts}")
+        # current_context_length, model_steps_processed, all_steps_processed, intermediate_steps are already initialized or fine with default list
 
     @property
     def _prompt_type(self) -> str:
@@ -232,6 +248,7 @@ class CustomPromptTemplate(StringPromptTemplate):
                     self.current_context_length >= self.max_context_length
                     and self.my_summarize_agent
             ):
+                print(f"[INFO] Summarization triggered. Last summary length: {len(self.last_summary)}, current_context_length: {self.current_context_length}, max_context_length: {self.max_context_length}")
                 self.last_summary = self.my_summarize_agent.run(
                     summary=self.last_summary,
                     thought_process=self.thought_log(
@@ -296,23 +313,37 @@ class BaseMinion:
             self,
             base_prompt,
             available_tools,
-            model_name: str = "gpt-4-1106-preview", # Renamed model to model_name
-            model_provider: str = "openai", # Added model_provider
+            model_name: str = "gpt-4-1106-preview", 
+            model_provider: str = "openai", 
             max_iterations: int = 50,
             allow_feedback: bool = False,
+            max_context_length: int = 5, # Added
+            keep_n_last_thoughts: int = 2, # Added
     ) -> None:
         llm = get_model(model_name=model_name, model_provider=model_provider)
 
         agent_toolnames = [tool.name for tool in available_tools]
-        available_tools.append(WarningTool().get_tool())
+        # Create a new list for tools to avoid modifying the original list if passed around
+        extended_tools = list(available_tools)
+        extended_tools.append(WarningTool().get_tool())
 
+        # Ensure CustomPromptTemplate is initialized with all required named arguments
+        # (template, tools, agent_toolnames, input_variables are implicitly part of its definition or passed)
+        # Explicitly pass project and my_summarize_agent if BaseMinion is expected to set them up
+        # For now, they are not passed from BaseMinion.__init__ to CustomPromptTemplate.__init__
+        # which means they will use their default values (None for my_summarize_agent and project)
+        # If these need to be configurable per BaseMinion instance, they should be passed here.
         self.prompt = CustomPromptTemplate(
             template=base_prompt,
-            tools=available_tools,
+            tools=extended_tools, # Use the extended list
             input_variables=extract_variable_names(
                 base_prompt, interaction_enabled=True
             ),
             agent_toolnames=agent_toolnames,
+            max_context_length=max_context_length, # Pass through
+            keep_n_last_thoughts=keep_n_last_thoughts, # Pass through
+            # project=self.project, # If BaseMinion has a project instance variable
+            # my_summarize_agent=self.my_summarize_agent # If BaseMinion sets this up
         )
 
         llm_chain = LLMChain(llm=llm, prompt=self.prompt)
@@ -365,13 +396,16 @@ class BaseMinionOpenAI:
             model_to_use += '-0613'
         llm = get_model(model_name=model_to_use, model_provider="openai")
         agent_toolnames = [tool.name for tool in available_tools]
+        # For BaseMinionOpenAI, we use default context length parameters for CustomPromptTemplate
+        # If these need to be configurable for BaseMinionOpenAI as well, they should be added to its __init__
         prompt = CustomPromptTemplate(
             template=base_prompt,
-            tools=available_tools,
+            tools=available_tools, # Assuming BaseMinionOpenAI doesn't need WarningTool added again if already in available_tools
             input_variables=extract_variable_names(
                 base_prompt
             ),
             agent_toolnames=agent_toolnames,
+            # max_context_length and keep_n_last_thoughts will use defaults (5, 2)
         )
         agent = OpenAIFunctionsAgent(llm=llm, prompt=prompt, tools=available_tools)
         # self.agent_executor = initialize_agent(available_tools, llm, agent=AgentType.OPENAI_FUNCTIONS, verbose=True,

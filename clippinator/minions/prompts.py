@@ -403,7 +403,7 @@ Here is the last summary you produced:
 {summary}
 Here is a new portion of the thought process:
 {thought_process}
-You need to concatenate the thought process to the summary and produce a new summary.
+You need to integrate the new thought process into the previous summary, maintaining a concise and coherent overall summary. Produce a new, updated summary.
 Here goes the new summary:
 """
 

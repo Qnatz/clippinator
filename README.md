@@ -27,6 +27,17 @@ _(Formerly known as Clippy)_
    use `poetry run clippinator PROJECT_PATH`
 8. You can stop it and then it will continue from the last saved state. Use ^C to provide feedback to the main agent.
 
+### Using Local LLMs (e.g., Deepseek)
+
+Clippinator supports using local LLMs that expose an OpenAI-compatible API endpoint, such as Deepseek Coder. To use this feature:
+
+1.  **Run your local LLM:** Ensure your local LLM server is running and accessible. For Deepseek, it typically runs on `http://localhost:8000`.
+2.  **Set Environment Variables:** Configure the following environment variables, for example, in your `.env` file (create one by copying `.env.example`):
+    *   `DEEPSEEK_API_URL`: The base URL of your local LLM's OpenAI-compatible API (e.g., `http://localhost:8000/v1`).
+    *   `DEEPSEEK_API_KEY`: An API key for your local LLM. If your LLM does not require a key, you can often use a placeholder like `NA`.
+3.  **Specify Model Provider and Name:** When initializing minions (currently done within the Clippinator codebase), you can specify `model_provider="deepseek"` and the appropriate `model_name` for your local LLM (e.g., `deepseek-coder-6.7b-instruct`).
+    *   *Note: Direct command-line options for selecting the model provider and name during `clippinator` execution are not yet implemented, but the backend supports this for programmatic integration or future CLI enhancements.*
+
 ### Selenium on Termux (Advanced)
 
 Running Selenium-based tools (like the QA agent that uses a browser) on Termux is possible but can be challenging due to the mobile environment. Here's a general outline of what's typically involved:
@@ -53,6 +64,20 @@ Running Selenium-based tools (like the QA agent that uses a browser) on Termux i
 *   Potential resource limitations on mobile devices.
 
 Due to these complexities, using the Selenium-dependent features of Clippinator on Termux may require significant manual configuration and troubleshooting.
+
+### Performance & Configuration Notes
+
+Several internal optimizations and configurations have been implemented, which can be particularly relevant for performance tuning, especially when using local LLMs or on resource-constrained devices:
+
+*   **`ctags` Caching:** Summaries generated using `ctags` for project structure analysis are now cached. The cache is invalidated if a file's modification time changes, reducing redundant `ctags` executions for unchanged files.
+*   **Optimized `pylint` Execution:** When linting multiple files or directories, `pylint` is now invoked once with all targets, rather than per file, making the process more efficient.
+*   **Configurable Auto-Linting:** The `WriteFile` tool, used by agents to write files, has an internal `auto_lint_on_write` parameter (defaults to `True`). This controls whether Pylint is automatically run after a Python file is written. This is currently a code-level configuration.
+*   **Configurable Summarization Context:** The context window for summarization (`max_context_length`) and the number of recent thoughts to retain before summarizing (`keep_n_last_thoughts`) are configurable parameters within the `CustomPromptTemplate` and `BaseMinion` classes. This allows for fine-tuning the balance between context detail and summarization frequency, which can impact performance and token usage. These are currently code-level configurations.
+*   **Termux Compatibility:**
+    *   The `PATH` environment variable handling in terminal tools has been revised to be safer for Termux, preventing the removal of essential system paths.
+    *   Hardcoded `/bin/bash` paths have been changed to `bash` to rely on the system `PATH`.
+
+These configurations are primarily intended for developers working with the Clippinator codebase. Future versions may expose some of these settings through more direct user interfaces or configuration files.
 
 ## Details
 

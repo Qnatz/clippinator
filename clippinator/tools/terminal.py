@@ -41,11 +41,13 @@ class RunBash:
         """Run commands and return final output."""
         if isinstance(commands, str):
             commands = [strip_quotes(commands)]
-        commands = ";".join(commands)
+        
+        command_to_execute = ";".join(commands)
+        print(f"[INFO] RunBash: Executing command: {command_to_execute} in workdir: {self.workdir}")
 
         try:
             completed_process = subprocess.run(
-                ['bash', '-c', commands],
+                ['bash', '-c', command_to_execute],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=self.workdir,
@@ -68,6 +70,13 @@ class RunBash:
         if self.strip_newlines:
             stdout_output = stdout_output.strip()
             # stderr_output = stderr_output.strip()
+        
+        if stdout_output:
+            print(f"[INFO] RunBash: stdout (first 200 chars):\n{stdout_output[:200]}")
+        # As stderr is redirected to stdout (stderr=subprocess.STDOUT), we only need to log stdout_output.
+        # If stderr were captured separately:
+        # if stderr_output:
+        #    print(f"[INFO] RunBash: stderr (first 200 chars):\n{stderr_output[:200]}")
 
         combined_output = trim_extra(stdout_output)  # + "\n" + stderr_output
         return combined_output if combined_output.strip() else "(empty)"

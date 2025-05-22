@@ -74,9 +74,10 @@ class WriteFile(SimpleTool):
         "avoid using it on non-empty files. "
     )
 
-    def __init__(self, project):
+    def __init__(self, project, auto_lint_on_write: bool = True): # Added auto_lint_on_write
         self.project = project
         self.workdir = project.path
+        self.auto_lint_on_write = auto_lint_on_write
 
     def structured_func(self, to_write: dict[str, str] | Any):
         to_write = unjson(to_write)
@@ -93,11 +94,17 @@ class WriteFile(SimpleTool):
                 with open(file_path, "w") as f:
                     f.write(content)
 
-                linter_output = self.project.lint_file(file_path)
-                if linter_output:
-                    result += f"Successfully written to {filename}. Linter output:\n{linter_output}\n\n"
-
-                result += f"Successfully written to {filename}.\n\n"
+                print(f"[INFO] WriteFile: auto_lint_on_write is {self.auto_lint_on_write} for file {file_path}")
+                if self.auto_lint_on_write and file_path.endswith(".py"): # Only lint python files
+                    print(f"[INFO] WriteFile: Performing linting for {file_path}.")
+                    linter_output = self.project.lint_file(file_path)
+                    if linter_output and linter_output.strip(): # Check if linter_output is not empty
+                        result += f"Successfully written to {filename}. Linter output:\n{linter_output}\n\n"
+                    else:
+                        result += f"Successfully written to {filename}. No linter output.\n\n"
+                else:
+                    print(f"[INFO] WriteFile: Skipped linting for {file_path} due to auto_lint_on_write={self.auto_lint_on_write} or not a Python file.")
+                    result += f"Successfully written to {filename}.\n\n"
             except Exception as e:
                 result += f"Error writing to {filename}: {str(e)}\n\n"
         return result.strip()
