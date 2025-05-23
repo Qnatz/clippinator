@@ -37,36 +37,50 @@ class CustomLlamaCliLLM(LLM):
     # Let's refine __init__ and use validators for final checks.
 
     def __init__(self, **kwargs: Any):
-        # Prioritize kwargs passed during instantiation
-        _cli_path = kwargs.pop("cli_path", os.environ.get("LLAMA_CLI_PATH"))
-        _model_path = kwargs.pop("model_path", os.environ.get("MODEL_PATH"))
-        
-        # For other params, allow kwargs to override env vars, which override class defaults
-        _n_ctx = int(kwargs.pop("n_ctx", os.environ.get("LLAMA_CLI_N_CTX", self.n_ctx)))
-        _n_threads = int(kwargs.pop("n_threads", os.environ.get("LLAMA_CLI_N_THREADS", self.n_threads)))
-        _n_predict = int(kwargs.pop("n_predict", os.environ.get("LLAMA_CLI_N_PREDICT", self.n_predict)))
-        _temperature = float(kwargs.pop("temperature", os.environ.get("LLAMA_CLI_TEMPERATURE", self.temperature)))
-        _top_k = int(kwargs.pop("top_k", os.environ.get("LLAMA_CLI_TOP_K", self.top_k)))
-        _top_p = float(kwargs.pop("top_p", os.environ.get("LLAMA_CLI_TOP_P", self.top_p)))
-        _repeat_penalty = float(kwargs.pop("repeat_penalty", os.environ.get("LLAMA_CLI_REPEAT_PENALTY", self.repeat_penalty)))
-        _n_gpu_layers = int(kwargs.pop("n_gpu_layers", os.environ.get("N_GPU_LAYERS", self.n_gpu_layers)))
-
-        # Update kwargs with resolved values to pass to super().__init__
-        # This ensures Pydantic knows about them during its initialization.
-        resolved_kwargs = {
-            "cli_path": _cli_path,
-            "model_path": _model_path,
-            "n_ctx": _n_ctx,
-            "n_threads": _n_threads,
-            "n_predict": _n_predict,
-            "temperature": _temperature,
-            "top_k": _top_k,
-            "top_p": _top_p,
-            "repeat_penalty": _repeat_penalty,
-            "n_gpu_layers": _n_gpu_layers,
-            **kwargs # Add back any remaining kwargs
+        # Prepare a dictionary for all values, starting with class defaults.
+        # These keys should match the class's annotated attributes.
+        values_to_pass = {
+            "cli_path": self.cli_path, 
+            "model_path": self.model_path,
+            "n_ctx": self.n_ctx,
+            "n_threads": self.n_threads,
+            "n_predict": self.n_predict,
+            "temperature": self.temperature,
+            "top_k": self.top_k,
+            "top_p": self.top_p,
+            "repeat_penalty": self.repeat_penalty,
+            "n_gpu_layers": self.n_gpu_layers
         }
-        super().__init__(**resolved_kwargs)
+
+        # Override with environment variables if they are set
+        # Ensure type conversions (int, float) are done here.
+        if "LLAMA_CLI_PATH" in os.environ:
+            values_to_pass["cli_path"] = os.environ["LLAMA_CLI_PATH"]
+        if "MODEL_PATH" in os.environ:
+            values_to_pass["model_path"] = os.environ["MODEL_PATH"]
+        if "LLAMA_CLI_N_CTX" in os.environ:
+            values_to_pass["n_ctx"] = int(os.environ["LLAMA_CLI_N_CTX"])
+        if "LLAMA_CLI_N_THREADS" in os.environ:
+            values_to_pass["n_threads"] = int(os.environ["LLAMA_CLI_N_THREADS"])
+        if "LLAMA_CLI_N_PREDICT" in os.environ:
+            values_to_pass["n_predict"] = int(os.environ["LLAMA_CLI_N_PREDICT"])
+        if "LLAMA_CLI_TEMPERATURE" in os.environ:
+            values_to_pass["temperature"] = float(os.environ["LLAMA_CLI_TEMPERATURE"])
+        if "LLAMA_CLI_TOP_K" in os.environ:
+            values_to_pass["top_k"] = int(os.environ["LLAMA_CLI_TOP_K"])
+        if "LLAMA_CLI_TOP_P" in os.environ:
+            values_to_pass["top_p"] = float(os.environ["LLAMA_CLI_TOP_P"])
+        if "LLAMA_CLI_REPEAT_PENALTY" in os.environ:
+            values_to_pass["repeat_penalty"] = float(os.environ["LLAMA_CLI_REPEAT_PENALTY"])
+        if "N_GPU_LAYERS" in os.environ: # Using N_GPU_LAYERS as per previous definition
+            values_to_pass["n_gpu_layers"] = int(os.environ["N_GPU_LAYERS"])
+
+        # Override with any kwargs passed directly to __init__
+        # This allows programmatic override of env vars or defaults.
+        values_to_pass.update(kwargs)
+
+        super().__init__(**values_to_pass)
+        # Validators for cli_path and model_path will run after Pydantic initializes fields.
 
     @validator('cli_path', always=True)
     def validate_cli_path(cls, v):
