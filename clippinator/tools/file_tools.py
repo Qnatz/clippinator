@@ -2,10 +2,10 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from langchain import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
 from langchain.chains.summarize import load_summarize_chain
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.docstore.document import Document
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,

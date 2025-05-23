@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from typing import List, Union, Callable, Any
 
 import langchain.schema
-from langchain import LLMChain, PromptTemplate
+from langchain.chains import LLMChain
+from langchain_core.prompts import PromptTemplate
 from langchain.agents import (
     Tool,
     AgentExecutor,
@@ -14,7 +15,7 @@ from langchain.agents import (
     AgentOutputParser,
 )
 from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
+from langchain_community.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.prompts import StringPromptTemplate
 from langchain.schema import AgentAction, AgentFinish
 

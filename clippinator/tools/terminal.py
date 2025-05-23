@@ -47,7 +47,7 @@ class RunBash:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=self.workdir,
-                timeout=70,
+                timeout=70, # Fixed: Added comma
                 env=env
             )
         except subprocess.TimeoutExpired as error:
