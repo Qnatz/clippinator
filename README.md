@@ -86,30 +86,7 @@ Running Clippinator on Termux requires some specific steps due to its mobile env
     poetry install
     ```
 4.  **Install `ctags`:** `pkg install universal-ctags`
-5.  **Selenium (Advanced):** Running Selenium-based tools (like the QA agent) on Termux is challenging.
-
-1.  **Install a Browser:**
-    *   Firefox: `pkg install firefox`
-    *   Chromium: `pkg install chromium` (availability may vary)
-
-2.  **Install WebDriver:**
-    *   **GeckoDriver (for Firefox):** This usually requires manual download and setup. You'll need to find an ARM-compatible version of GeckoDriver and make it executable in your Termux PATH (e.g., `$PREFIX/bin`). Ensure its version is compatible with your installed Firefox.
-    *   **ChromeDriver (for Chromium):** Similar to GeckoDriver, this needs to be manually downloaded, made executable, and compatible with your Chromium version and ARM architecture.
-
-3.  **Install Xvfb (Virtual Display):**
-    *   Since Termux doesn't have a standard GUI, a virtual display server like Xvfb might be necessary: `pkg install xorg-server-xvfb` (or a similar package).
-    *   You may need to start Xvfb before running Selenium scripts (e.g., `Xvfb :1 -screen 0 1024x768x16 &`) and set the `DISPLAY` environment variable (`export DISPLAY=:1`).
-
-4.  **Python Selenium Library:**
-    *   This should be installed by `poetry install` if it's a project dependency. Otherwise, `pip install selenium`.
-
-**Challenges:**
-*   Finding compatible Browser and WebDriver versions for ARM architecture.
-*   Manual installation and PATH setup for WebDrivers.
-*   Ensuring headless operation works correctly.
-*   Potential resource limitations on mobile devices.
-
-Due to these complexities, using the Selenium-dependent features of Clippinator on Termux may require significant manual configuration and troubleshooting.
+5.  **Web Browsing Tool:** The built-in web browsing tool (`BrowseWebPage`) uses HTTP requests and does not require a separate browser installation or WebDriver setup on Termux.
 
 ### Performance & Configuration Notes
 
@@ -191,9 +168,8 @@ A variety of tools have been implemented (or taken from Langchain):
   server).
 - Human input
 - Pylint
-- Selenium - browser automation for testing. It allows to view the page in a convenient format, get console logs, click,
-  types, execute selenium code
-- HttpGet, GetPage - simpler tools for getting a page
+- BrowseWebPage - Fetches text content from web pages and can follow links to a specified depth. Uses HTTP requests and HTML parsing (does not execute JavaScript).
+- HttpGet, GetPage - simpler tools for getting a page (Note: GetPage might be considered for deprecation in favor of BrowseWebPage's core functionality if only text is needed)
 - DeclareArchitecture, SetCI, Remember - allow the agents to set up their environment, write architecture, remember
   things
 
