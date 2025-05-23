@@ -37,50 +37,51 @@ class CustomLlamaCliLLM(LLM):
     # Let's refine __init__ and use validators for final checks.
 
     def __init__(self, **kwargs: Any):
-        # Prepare a dictionary for all values, starting with class defaults.
-        # These keys should match the class's annotated attributes.
-        values_to_pass = {
-            "cli_path": self.cli_path, 
-            "model_path": self.model_path,
-            "n_ctx": self.n_ctx,
-            "n_threads": self.n_threads,
-            "n_predict": self.n_predict,
-            "temperature": self.temperature,
-            "top_k": self.top_k,
-            "top_p": self.top_p,
-            "repeat_penalty": self.repeat_penalty,
-            "n_gpu_layers": self.n_gpu_layers
-        }
+        # Precedence for setting values:
+        # 1. Keyword arguments passed to __init__ (kwargs)
+        # 2. Environment variables
+        # 3. Class-defined defaults (handled by Pydantic when a key is not in final_kwargs_to_pass)
 
-        # Override with environment variables if they are set
-        # Ensure type conversions (int, float) are done here.
+        values_from_env = {}
+
+        # Populate from environment variables, converting types.
         if "LLAMA_CLI_PATH" in os.environ:
-            values_to_pass["cli_path"] = os.environ["LLAMA_CLI_PATH"]
+            values_from_env["cli_path"] = os.environ["LLAMA_CLI_PATH"]
         if "MODEL_PATH" in os.environ:
-            values_to_pass["model_path"] = os.environ["MODEL_PATH"]
+            values_from_env["model_path"] = os.environ["MODEL_PATH"]
         if "LLAMA_CLI_N_CTX" in os.environ:
-            values_to_pass["n_ctx"] = int(os.environ["LLAMA_CLI_N_CTX"])
+            values_from_env["n_ctx"] = int(os.environ["LLAMA_CLI_N_CTX"])
         if "LLAMA_CLI_N_THREADS" in os.environ:
-            values_to_pass["n_threads"] = int(os.environ["LLAMA_CLI_N_THREADS"])
+            values_from_env["n_threads"] = int(os.environ["LLAMA_CLI_N_THREADS"])
         if "LLAMA_CLI_N_PREDICT" in os.environ:
-            values_to_pass["n_predict"] = int(os.environ["LLAMA_CLI_N_PREDICT"])
+            values_from_env["n_predict"] = int(os.environ["LLAMA_CLI_N_PREDICT"])
         if "LLAMA_CLI_TEMPERATURE" in os.environ:
-            values_to_pass["temperature"] = float(os.environ["LLAMA_CLI_TEMPERATURE"])
+            values_from_env["temperature"] = float(os.environ["LLAMA_CLI_TEMPERATURE"])
         if "LLAMA_CLI_TOP_K" in os.environ:
-            values_to_pass["top_k"] = int(os.environ["LLAMA_CLI_TOP_K"])
+            values_from_env["top_k"] = int(os.environ["LLAMA_CLI_TOP_K"])
         if "LLAMA_CLI_TOP_P" in os.environ:
-            values_to_pass["top_p"] = float(os.environ["LLAMA_CLI_TOP_P"])
+            values_from_env["top_p"] = float(os.environ["LLAMA_CLI_TOP_P"])
         if "LLAMA_CLI_REPEAT_PENALTY" in os.environ:
-            values_to_pass["repeat_penalty"] = float(os.environ["LLAMA_CLI_REPEAT_PENALTY"])
+            values_from_env["repeat_penalty"] = float(os.environ["LLAMA_CLI_REPEAT_PENALTY"])
         if "N_GPU_LAYERS" in os.environ: # Using N_GPU_LAYERS as per previous definition
-            values_to_pass["n_gpu_layers"] = int(os.environ["N_GPU_LAYERS"])
+            values_from_env["n_gpu_layers"] = int(os.environ["N_GPU_LAYERS"])
 
-        # Override with any kwargs passed directly to __init__
-        # This allows programmatic override of env vars or defaults.
-        values_to_pass.update(kwargs)
+        # Combine with kwargs: kwargs override environment variables.
+        # Pydantic will apply class-defined defaults for any keys not present in final_kwargs_to_pass.
+        final_kwargs_to_pass = {**values_from_env, **kwargs}
+        
+        # ---- START DEBUG PRINTS ----
+        # Ensure this print statement is still present for debugging this specific issue
+        print(f"DEBUG: CustomLlamaCliLLM __init__: final_kwargs_to_pass BEFORE super = {final_kwargs_to_pass}")
+        # ---- END DEBUG PRINTS ----
 
-        super().__init__(**values_to_pass)
-        # Validators for cli_path and model_path will run after Pydantic initializes fields.
+        super().__init__(**final_kwargs_to_pass)
+        
+        # ---- START DEBUG PRINTS ----
+        # Ensure this print statement is still present
+        print(f"DEBUG: CustomLlamaCliLLM __init__: self.__dict__ AFTER super().__init__ = {self.__dict__}")
+        # ---- END DEBUG PRINTS ----
+        # Validators for cli_path and model_path will run after Pydantic initializes fields based on final_kwargs_to_pass and class defaults.
 
     @validator('cli_path', always=True)
     def validate_cli_path(cls, v):
