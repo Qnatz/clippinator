@@ -2,10 +2,11 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+import os  # Added import os
 from langchain import PromptTemplate
 from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
 from langchain.chains.summarize import load_summarize_chain
-from langchain.chat_models import ChatOpenAI
+from langchain_community.llms import LlamaCpp  # Replaced ChatOpenAI with LlamaCpp
 from langchain.docstore.document import Document
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
@@ -410,13 +411,23 @@ class SummarizeFile(SimpleTool):
     summary_agent: BaseCombineDocumentsChain
     text_splitter: RecursiveCharacterTextSplitter
 
-    def __init__(self, wd: str = ".", model_name: str = "gpt-3.5-turbo"):
+    def __init__(self, wd: str = "."):  # Removed model_name parameter
         self.workdir = wd
         mr_prompt = PromptTemplate(
             template=mr_prompt_template, input_variables=["text"]
         )
+        # Instantiate LlamaCpp similar to taskmaster.py
+        llm = LlamaCpp(
+            model_path=os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+            n_gpu_layers=int(os.environ.get("N_GPU_LAYERS", 0)),
+            n_batch=int(os.environ.get("N_BATCH", 512)),
+            n_ctx=int(os.environ.get("N_CTX", 2048)),
+            temperature=float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+            max_tokens=int(os.environ.get("LLAMA_MAX_TOKENS", 1024)),
+            verbose=True  # Or as per project's preference, set to True for now
+        )
         self.summary_agent = load_summarize_chain(
-            ChatOpenAI(model_name=model_name, request_timeout=140),
+            llm,  # Use LlamaCpp instance
             chain_type="map_reduce",
             map_prompt=mr_prompt,
             combine_prompt=mr_prompt,
