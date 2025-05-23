@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import pickle
 
-from langchain import LLMChain
+from langchain.chains import LLMChain
 from langchain.agents import AgentExecutor, LLMSingleActionAgent
 
 from clippinator.project import Project
