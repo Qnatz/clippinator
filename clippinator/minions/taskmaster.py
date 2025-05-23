@@ -60,14 +60,21 @@ class Taskmaster:
         )
         tools.append(WarningTool().get_tool())
 
+        # ---- START DEBUG PRINT ----
+        print(f"DEBUG: Taskmaster.__init__: About to create CustomPromptTemplate. Args:")
+        print(f"DEBUG:   type(taskmaster_prompt): {type(taskmaster_prompt)}, taskmaster_prompt: '{str(taskmaster_prompt)[:100]}...'") # Print type and snippet
+        print(f"DEBUG:   type(tools): {type(tools)}, len(tools): {len(tools) if tools is not None else 'None'}")
+        _input_vars = extract_variable_names(taskmaster_prompt, interaction_enabled=True)
+        print(f"DEBUG:   type(_input_vars): {type(_input_vars)}, _input_vars: {_input_vars}")
+        print(f"DEBUG:   type(agent_tool_names): {type(agent_tool_names)}, agent_tool_names: {agent_tool_names}")
+        # ---- END DEBUG PRINT ----
+
         self.prompt = prompt or CustomPromptTemplate(
             template=taskmaster_prompt,
             tools=tools,
-            input_variables=extract_variable_names(
-                taskmaster_prompt, interaction_enabled=True
-            ),
+            input_variables=_input_vars, # Use the pre-calculated _input_vars
             agent_toolnames=agent_tool_names,
-            my_summarize_agent=BasicLLM(base_prompt=summarize_prompt),
+            my_summarize_agent=BasicLLM(base_prompt=summarize_prompt), # This will trigger its own CustomLlamaCliLLM init
             project=project,
         )
         self.prompt.hook = lambda _: self.save_to_file()

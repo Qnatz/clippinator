@@ -178,24 +178,50 @@ class CustomPromptTemplate(StringPromptTemplate):
     my_summarize_agent: Any = None
     last_summary: str = ""
     project: Any | None = None
-    intermediate_steps: list[(AgentAction, str)] = []
-    hook: Callable[[CustomPromptTemplate], None] | None = None
+    intermediate_steps: list = [] # Field for intermediate steps
+    hook: Optional[Callable[[CustomPromptTemplate], None]] = None
 
-    def __init__(self, *, template: str, tools: List[Tool], agent_toolnames: List[str],
-                 input_variables: List[str], max_context_length: int = 5, keep_n_last_thoughts: int = 2,
-                 project: Any | None = None, my_summarize_agent: Any = None,
-                 hook: Callable[[CustomPromptTemplate], None] | None = None):
-        super().__init__(input_variables=input_variables) # Corrected super call
-        self.template = template # Initialize template
-        self.tools = tools # Initialize tools
-        self.agent_toolnames = agent_toolnames # Initialize agent_toolnames
-        self.max_context_length = max_context_length
-        self.keep_n_last_thoughts = keep_n_last_thoughts
-        self.project = project
-        self.my_summarize_agent = my_summarize_agent
-        self.last_summary = ""
-        self.hook = hook
-        print(f"[INFO] CustomPromptTemplate initialized with max_context_length={self.max_context_length}, keep_n_last_thoughts={self.keep_n_last_thoughts}")
+    def __init__(self, **kwargs: Any):
+        # Pydantic v1: Pass all relevant kwargs to super().__init__().
+        # Fields defined on CustomPromptTemplate (template, tools, agent_toolnames)
+        # and fields expected by StringPromptTemplate (input_variables)
+        # will be picked up by Pydantic's initialization mechanism.
+        super().__init__(**kwargs)
+
+        # Initialize attributes that are not direct Pydantic fields passed to super(),
+        # or that need specific default logic not handled by class var defaults + Pydantic.
+        # For attributes that *are* Pydantic fields (like template, tools, agent_toolnames, input_variables),
+        # they are already set by super().__init__(**kwargs) if they were in kwargs.
+
+        # These seem like configurable parameters rather than core Pydantic fields of the prompt template itself.
+        # If they were meant to be fields, they should be passed to super() too.
+        # For now, setting them as instance attributes from kwargs or defaults.
+        self.max_context_length = kwargs.get("max_context_length", 5)
+        self.keep_n_last_thoughts = kwargs.get("keep_n_last_thoughts", 2)
+        
+        # project, my_summarize_agent, hook are passed during instantiation and should be set on self.
+        # If they are also meant to be Pydantic fields, they should be part of kwargs to super().
+        # Assuming they are just instance attributes for now:
+        self.project = kwargs.get("project")
+        self.my_summarize_agent = kwargs.get("my_summarize_agent")
+        self.hook = kwargs.get("hook")
+
+        # Initialize mutable state attributes here if not handled by Pydantic Field(default_factory=list)
+        # For Pydantic fields, super().__init__(**kwargs) would have initialized them if they were in kwargs,
+        # or used their class-level defaults (including default_factory).
+        # If 'intermediate_steps' is a class-annotated field (e.g., `intermediate_steps: list = Field(default_factory=list)`),
+        # Pydantic handles its default initialization.
+        # If it's just a regular instance attribute not declared as a Pydantic field, initialize it here.
+        # Based on its usage, it's state, so ensure it's initialized.
+        if not hasattr(self, 'intermediate_steps') or self.intermediate_steps is None: # Check if Pydantic set it
+            self.intermediate_steps = []
+        
+        # These are likely already initialized by their class variable defaults if not in kwargs.
+        # No need to re-initialize unless specific logic is needed.
+        # self.current_context_length = 0 # Already a class var default
+        # self.model_steps_processed = 0 # Already a class var default
+        # self.all_steps_processed = 0 # Already a class var default
+        # self.last_summary = "" # Already a class var default
 
     @property
     def _prompt_type(self) -> str:
