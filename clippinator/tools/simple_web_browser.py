@@ -136,36 +136,39 @@ class SimpleWebBrowserTool:
         print(f"[INFO] Browsing complete. Visited {pages_visited_count} page(s). Total text length: {current_total_text_len}. Total unique links: {len(all_unique_links)}.")
         return results
 
-if __name__ == '__main__':
-    # Example Usage
-    browser = SimpleWebBrowserTool()
-
-    print("\\n--- Example 1: Single page ---")
-    result1 = browser.run("http://example.com", depth=0)
-    print(f"Text from example.com:\\n{result1['text'][:500]}...")
-    print(f"Links from example.com: {result1['links']}")
-    print(f"Visited URLs: {result1['visited_urls']}")
-
-    # Note: For depth > 0, be mindful of the sites you are crawling.
-    # This example might try to fetch external sites like iana.org.
-    # print("\\n--- Example 2: Depth 1 (use a controlled site for testing) ---")
-    # Create a dummy html file for testing depth=1 locally if needed.
-    # For instance, create test.html:
-    # <html><body><p>Test page 1</p><a href="test2.html">Link to Test Page 2</a></body></html>
-    # And test2.html:
-    # <html><body><p>Test page 2</p><a href="http://example.com">Example</a></body></html>
-    # Then run a local HTTP server: python -m http.server
-    # result2 = browser.run("http://localhost:8000/test.html", depth=1)
-    # print(f"Combined Text (depth 1):\\n{result2['text']}")
-    # print(f"All Links (depth 1): {result2['links']}")
-    # print(f"Visited URLs: {result2['visited_urls']}")
-
-    print("\\n--- Example 3: Fetching a non-existent page ---")
-    result3 = browser.run("http://domainthatdoesnotexistforsure123.com")
-    print(f"Result for non-existent page: {result3}")
-    
-    print("\\n--- Example 4: Fetching an invalid URL scheme ---")
-    result4 = browser.run("ftp://example.com")
-    print(f"Result for invalid scheme: {result4}")
-
-```
+# if __name__ == '__main__':
+#     # Example Usage
+#     browser = SimpleWebBrowserTool()
+# 
+#     print("\\n--- Example 1: Single page ---")
+#     result1 = browser.run("http://example.com", depth=0)
+#     print(f"Text from example.com:\\n{result1['text'][:500]}...")
+#     print(f"Links from example.com: {result1['links']}")
+#     print(f"Visited URLs: {result1['visited_urls']}")
+# 
+#     # Note: For depth > 0, be mindful of the sites you are crawling.
+#     # This example might try to fetch external sites like iana.org.
+#     # print("\\n--- Example 2: Depth 1 (use a controlled site for testing) ---")
+#     # Create a dummy html file for testing depth=1 locally if needed.
+#     # For instance, create test.html:
+#     # <html><body><p>Test page 1</p><a href="test2.html">Link to Test Page 2</a></body></html>
+#     # And test2.html:
+#     # <html><body><p>Test page 2</p><a href="http://example.com">Example</a></body></html>
+#     # Then run a local HTTP server: python -m http.server
+#     # result2 = browser.run("http://localhost:8000/test.html", depth=1)
+#     # print(f"Combined Text (depth 1):\\n{result2['text']}")
+#     # print(f"All Links (depth 1): {result2['links']}")
+#     # print(f"Visited URLs: {result2['visited_urls']}")
+# 
+#     print("\\n--- Example 3: Fetching a non-existent page ---")
+#     result3 = browser.run("http://domainthatdoesnotexistforsure123.com")
+#     print(f"Result for non-existent page: {result3}")
+#     
+#     print("\\n--- Example 4: Fetching an invalid URL scheme ---")
+#     result4 = browser.run("ftp://example.com")
+#     print(f"Result for invalid scheme: {result4}")
+# 
+# ``` # This final backtick block is assumed to be the cause if it exists beyond visible code.
+# # If the error is truly at line 171 from a ```, and that line is not visible,
+# # commenting out the entire __main__ block is the safest measure based on instructions.
+# # The trailing ``` is purely hypothetical based on the error description.

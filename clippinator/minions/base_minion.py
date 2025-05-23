@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from typing import List, Union, Callable, Any
 
 import langchain.schema
-from langchain import LLMChain, PromptTemplate
+from langchain.chains import LLMChain # Updated import
+from langchain.prompts import PromptTemplate # Updated import
 from langchain.agents import (
     Tool,
     AgentExecutor,

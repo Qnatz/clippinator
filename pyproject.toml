@@ -25,6 +25,7 @@ anthropic = "^0.21.0"
 llama-cpp-python = "^0.2.57"
 requests = "^2.31.0" # Added
 yarl = "^1.9.4" # Added
+langchain-community = "^0.0.34" # Added
 
 
 [tool.poetry.group.dev.dependencies]

@@ -2,7 +2,7 @@ import os
 
 from langchain.agents import Tool
 from langchain.tools import BaseTool
-from langchain.utilities import SerpAPIWrapper
+from langchain_community.utilities import SerpAPIWrapper # Updated import
 
 from clippinator.project import Project
 from .architectural import Remember, TemplateInfo, TemplateSetup, SetCI, DeclareArchitecture
