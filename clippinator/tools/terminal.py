@@ -16,10 +16,12 @@ from .file_tools import strip_quotes
 from .tool import SimpleTool
 from .utils import trim_extra
 
-env = dict(os.environ.copy())
-env.pop('VIRTUAL_ENV', None)
-env['PATH'] = env.get('PATH', '').split(':', 1)[-1]
-
+# Removed global env modification. Environment will be handled per subprocess call.
+# The original global `env` modification was:
+# env = dict(os.environ.copy())
+# env.pop('VIRTUAL_ENV', None)
+# env['PATH'] = env.get('PATH', '').split(':', 1)[-1]
+# This was problematic for Termux as it could remove essential paths.
 
 class RunBash:
     """Executes bash commands and returns the output."""
@@ -39,16 +41,25 @@ class RunBash:
         """Run commands and return final output."""
         if isinstance(commands, str):
             commands = [strip_quotes(commands)]
-        commands = ";".join(commands)
+        
+        command_to_execute = ";".join(commands)
+        print(f"[INFO] RunBash: Executing command: {command_to_execute} in workdir: {self.workdir}")
 
         try:
             completed_process = subprocess.run(
-                ['bash', '-c', commands],
+                ['bash', '-c', command_to_execute],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=self.workdir,
                 timeout=70,
-                env=env
+                # Prepare environment for the subprocess:
+                # Start with a copy of the current environment.
+                # If the original intent of global `env` was to avoid Python virtual envs,
+                # popping VIRTUAL_ENV is a more targeted approach.
+                # Crucially, PATH is not modified here, preserving Termux's default PATH.
+                current_env = os.environ.copy()
+                current_env.pop('VIRTUAL_ENV', None)
+                env=current_env
             )
         except subprocess.TimeoutExpired as error:
             return "Command timed out, possibly due to asking for input."
@@ -59,6 +70,13 @@ class RunBash:
         if self.strip_newlines:
             stdout_output = stdout_output.strip()
             # stderr_output = stderr_output.strip()
+        
+        if stdout_output:
+            print(f"[INFO] RunBash: stdout (first 200 chars):\n{stdout_output[:200]}")
+        # As stderr is redirected to stdout (stderr=subprocess.STDOUT), we only need to log stdout_output.
+        # If stderr were captured separately:
+        # if stderr_output:
+        #    print(f"[INFO] RunBash: stderr (first 200 chars):\n{stderr_output[:200]}")
 
         combined_output = trim_extra(stdout_output)  # + "\n" + stderr_output
         return combined_output if combined_output.strip() else "(empty)"
@@ -141,10 +159,14 @@ class BashBackgroundSessions(SimpleTool):
             pid = int(args.split()[1])
             for process in bash_processes:
                 if process["pr"].pid == pid:
-                    process["pr"].terminate()
+                    process["pr"].terminate() # Attempt graceful termination first
+                    # The following os.system calls are a more forceful approach.
+                    # Killing pid + 1 and pid + 2 is heuristic, attempting to kill 
+                    # potential child/related processes spawned by the shell,
+                    # but this may not be universally effective or precise.
                     os.system(f"kill -9 {pid}")
-                    os.system(f"kill -9 {pid + 1}")
-                    os.system(f"kill -9 {pid + 2}")
+                    os.system(f"kill -9 {pid + 1}") # Heuristic
+                    os.system(f"kill -9 {pid + 2}") # Heuristic
                     bash_processes.remove(process)
                     return f"Killed process with pid {pid}.\n"
             return f"Could not find process with pid {pid}.\n"
@@ -165,13 +187,20 @@ class BashBackgroundSessions(SimpleTool):
             return 'Current processes:\n' + '\n'.join(
                 [f'    - pid: {process["pr"].pid}| `{process["args"][:50]}`' for process in bash_processes])
         else:
+            # Prepare environment for the new bash process:
+            # Start with a copy of the current environment.
+            # Pop VIRTUAL_ENV if the goal is to run outside a Python venv's influence.
+            # PATH is not modified, preserving Termux's default.
+            current_env_for_popen = os.environ.copy()
+            current_env_for_popen.pop('VIRTUAL_ENV', None)
+
             process = subprocess.Popen(
-                ["/bin/bash"],
+                ["bash"], # Changed from /bin/bash to rely on PATH
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=env,
+                env=current_env_for_popen, # Use the prepared environment
                 cwd=self.workdir,
             )
             fd = process.stdout.fileno()

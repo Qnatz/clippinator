@@ -44,7 +44,7 @@ def taskmaster(project_path: str, objective: str = ""):
 
 
 if __name__ == "__main__":
-    if not os.environ.get('OPENAI_API_KEY'):
-        rich.print("[bold red]OPENAI_API_KEY is not set.[/bold red] You can set it permanently in .env file.")
-        os.environ['OPENAI_API_KEY'] = text_prompt("Please, enter your OpenAI API key")
+    # Removed OPENAI_API_KEY check and prompt block.
+    # The application now relies on LlamaCpp and its specific environment variables
+    # (like MODEL_PATH) which should be set in the .env file.
     app()

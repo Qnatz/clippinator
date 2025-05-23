@@ -6,15 +6,16 @@ from dataclasses import dataclass
 from typing import List, Union, Callable, Any
 
 import langchain.schema
-from langchain import LLMChain, PromptTemplate
+from langchain.chains import LLMChain # Updated import
+from langchain.prompts import PromptTemplate # Updated import
 from langchain.agents import (
     Tool,
     AgentExecutor,
     LLMSingleActionAgent,
     AgentOutputParser,
 )
-from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
+# Removed OpenAIFunctionsAgent, ChatOpenAI, ChatAnthropic
+from langchain_community.llms import LlamaCpp # Added LlamaCpp import
 from langchain.prompts import StringPromptTemplate
 from langchain.schema import AgentAction, AgentFinish
 
@@ -134,22 +135,30 @@ def extract_variable_names(prompt: str, interaction_enabled: bool = False):
         variable_names.append("intermediate_steps")
     return variable_names
 
-
-def get_model(model: str = "gpt-4-1106-preview"):
-    return ChatOpenAI(
-        temperature=0.05 if model != "gpt-3.5-turbo" else 0.7,
-        model_name=model,
-        request_timeout=320,
-    )
-
+# Removed get_model function
 
 @dataclass
 class BasicLLM:
     prompt: PromptTemplate
     llm: LLMChain
 
-    def __init__(self, base_prompt: str, model: str = "gpt-4-1106-preview") -> None:
-        llm = get_model(model)
+    def __init__(self, base_prompt: str, 
+                 model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+                 n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
+                 n_batch: int = int(os.environ.get("N_BATCH", 512)),
+                 n_ctx: int = int(os.environ.get("N_CTX", 2048)),
+                 temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+                 max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
+                 ) -> None:
+        llm = LlamaCpp(
+            model_path=model_path,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            verbose=True # Assuming verbosity is desired for LlamaCpp
+        )
         self.llm = LLMChain(
             llm=llm,
             prompt=PromptTemplate(
@@ -168,8 +177,8 @@ class CustomPromptTemplate(StringPromptTemplate):
     # The list of tools available
     tools: List[Tool]
     agent_toolnames: List[str]
-    max_context_length: int = 5
-    keep_n_last_thoughts: int = 2
+    # max_context_length: int = 5 # Now an instance variable
+    # keep_n_last_thoughts: int = 2 # Now an instance variable
     current_context_length: int = 0
     model_steps_processed: int = 0
     all_steps_processed: int = 0
@@ -178,6 +187,21 @@ class CustomPromptTemplate(StringPromptTemplate):
     project: Any | None = None
     intermediate_steps: list[(AgentAction, str)] = []
     hook: Callable[[CustomPromptTemplate], None] | None = None
+
+    def __init__(self, *, template: str, tools: List[Tool], agent_toolnames: List[str], 
+                 input_variables: List[str], max_context_length: int = 5, keep_n_last_thoughts: int = 2, 
+                 project: Any | None = None, my_summarize_agent: Any = None, 
+                 hook: Callable[[CustomPromptTemplate], None] | None = None):
+        super().__init__(template=template, tools=tools, agent_toolnames=agent_toolnames, 
+                         input_variables=input_variables) # Pass relevant args to parent
+        self.max_context_length = max_context_length
+        self.keep_n_last_thoughts = keep_n_last_thoughts
+        self.project = project # Ensure these are initialized if they are class attributes potentially accessed before format
+        self.my_summarize_agent = my_summarize_agent
+        self.last_summary = "" # Initialize last_summary
+        self.hook = hook
+        print(f"[INFO] CustomPromptTemplate initialized with max_context_length={self.max_context_length}, keep_n_last_thoughts={self.keep_n_last_thoughts}")
+        # current_context_length, model_steps_processed, all_steps_processed, intermediate_steps are already initialized or fine with default list
 
     @property
     def _prompt_type(self) -> str:
@@ -214,6 +238,7 @@ class CustomPromptTemplate(StringPromptTemplate):
                     self.current_context_length >= self.max_context_length
                     and self.my_summarize_agent
             ):
+                print(f"[INFO] Summarization triggered. Last summary length: {len(self.last_summary)}, current_context_length: {self.current_context_length}, max_context_length: {self.max_context_length}")
                 self.last_summary = self.my_summarize_agent.run(
                     summary=self.last_summary,
                     thought_process=self.thought_log(
@@ -278,22 +303,49 @@ class BaseMinion:
             self,
             base_prompt,
             available_tools,
-            model: str = "gpt-4-1106-preview",
             max_iterations: int = 50,
             allow_feedback: bool = False,
+            max_context_length: int = 5,
+            keep_n_last_thoughts: int = 2,
+            # LlamaCpp specific parameters with defaults from environment variables
+            model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+            n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
+            n_batch: int = int(os.environ.get("N_BATCH", 512)),
+            n_ctx: int = int(os.environ.get("N_CTX", 2048)),
+            temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+            max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
     ) -> None:
-        llm = get_model(model)
-
+        llm = LlamaCpp(
+            model_path=model_path,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            verbose=True # Assuming verbosity is desired
+        )
         agent_toolnames = [tool.name for tool in available_tools]
-        available_tools.append(WarningTool().get_tool())
+        # Create a new list for tools to avoid modifying the original list if passed around
+        extended_tools = list(available_tools)
+        extended_tools.append(WarningTool().get_tool())
 
+        # Ensure CustomPromptTemplate is initialized with all required named arguments
+        # (template, tools, agent_toolnames, input_variables are implicitly part of its definition or passed)
+        # Explicitly pass project and my_summarize_agent if BaseMinion is expected to set them up
+        # For now, they are not passed from BaseMinion.__init__ to CustomPromptTemplate.__init__
+        # which means they will use their default values (None for my_summarize_agent and project)
+        # If these need to be configurable per BaseMinion instance, they should be passed here.
         self.prompt = CustomPromptTemplate(
             template=base_prompt,
-            tools=available_tools,
+            tools=extended_tools, # Use the extended list
             input_variables=extract_variable_names(
                 base_prompt, interaction_enabled=True
             ),
             agent_toolnames=agent_toolnames,
+            max_context_length=max_context_length, # Pass through
+            keep_n_last_thoughts=keep_n_last_thoughts, # Pass through
+            # project=self.project, # If BaseMinion has a project instance variable
+            # my_summarize_agent=self.my_summarize_agent # If BaseMinion sets this up
         )
 
         llm_chain = LLMChain(llm=llm, prompt=self.prompt)
@@ -334,55 +386,7 @@ class BaseMinion:
                 self.prompt.intermediate_steps += [feedback]
             return self.run(**kwargs)
 
-
-@dataclass
-class BaseMinionOpenAI:
-    def __init__(self, base_prompt, available_tools, model: str = "gpt-4-1106-preview") -> None:
-        if not model.endswith('-0613'):
-            model += '-0613'
-        llm = get_model(model)
-        agent_toolnames = [tool.name for tool in available_tools]
-        prompt = CustomPromptTemplate(
-            template=base_prompt,
-            tools=available_tools,
-            input_variables=extract_variable_names(
-                base_prompt
-            ),
-            agent_toolnames=agent_toolnames,
-        )
-        agent = OpenAIFunctionsAgent(llm=llm, prompt=prompt, tools=available_tools)
-        # self.agent_executor = initialize_agent(available_tools, llm, agent=AgentType.OPENAI_FUNCTIONS, verbose=True,
-        #                                        prompt=prompt)
-        self.agent_executor = AgentExecutor.from_agent_and_tools(
-            agent=agent,
-            tools=available_tools,
-            verbose=True,
-            max_iterations=50,
-        )
-
-    def run(self, **kwargs):
-        kwargs["feedback"] = kwargs.get("feedback", "")
-        kwargs["format_description"] = ''
-        kwargs['input'] = ''
-        initial_temperature = 0
-        if 'temperature' in kwargs:
-            try:
-                initial_temperature = self.agent_executor.agent.llm.temperature
-                self.agent_executor.agent.llm.temperature = kwargs['temperature']
-            except AttributeError:
-                pass
-        try:
-            result = (
-                    self.agent_executor.run(**kwargs)
-                    or "No result. The execution was probably unsuccessful."
-            )
-            self.agent_executor.agent.llm.temperature = initial_temperature
-            return result
-        except langchain.schema.OutputParserException as e:
-            print(e)
-            kwargs['temperature'] = 0.7
-            return self.run(**kwargs)
-
+# Removed BaseMinionOpenAI class
 
 @dataclass
 class FeedbackMinion:
@@ -397,11 +401,25 @@ class FeedbackMinion:
             eval_prompt: str,
             feedback_prompt: str,
             check_function: Callable[[str], Any] = lambda x: None,
-            model: str = "gpt-4-1106-preview",
+            # LlamaCpp specific parameters for the evaluation LLM
+            model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
+            n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
+            n_batch: int = int(os.environ.get("N_BATCH", 512)),
+            n_ctx: int = int(os.environ.get("N_CTX", 2048)),
+            temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
+            max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
     ) -> None:
-        llm = get_model(model)
+        eval_llm_instance = LlamaCpp(
+            model_path=model_path,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            n_ctx=n_ctx,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            verbose=True # Assuming verbosity for eval LLM
+        )
         self.eval_llm = LLMChain(
-            llm=llm,
+            llm=eval_llm_instance,
             prompt=PromptTemplate(
                 template=eval_prompt,
                 input_variables=extract_variable_names(eval_prompt),

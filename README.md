@@ -13,18 +13,94 @@ _(Formerly known as Clippy)_
 
 [Twitter thread](https://twitter.com/ennucore/status/1680971027931693063)
 
+### Core Change: Local LLM Powered
+
+Clippinator now exclusively uses a local GGUF-compatible LLM (e.g., Deepseek Coder) via `llama-cpp-python`. This means it no longer relies on external API providers like OpenAI for its core agent functionalities.
+
 ### Getting started
 
-1. Install [Poetry](https://python-poetry.org/docs/#installation).
-2. Clone this repository.
-3. Add the api key (OpenAI) to `.env` file: `OPENAI_API_KEY=...`. Optionally, you can add your SerpAPI
-   key to allow the model to use search: `SERPAPI_API_KEY=`
-4. Install [ctags](https://docs.ctags.io/en/latest/building.html).
-5. For pylint, install it and [pylint-venv](https://github.com/jgosmann/pylint-venv/).
-6. Install dependencies: `poetry install`.
-7. Run: `poetry run clippinator --help`. To run it on a project,
-   use `poetry run clippinator PROJECT_PATH`
-8. You can stop it and then it will continue from the last saved state. Use ^C to provide feedback to the main agent.
+1.  **Install Poetry:** Follow the instructions on the [Poetry website](https://python-poetry.org/docs/#installation).
+2.  **Clone this repository:** `git clone https://github.com/ennucore/clippinator.git && cd clippinator`
+3.  **Obtain a GGUF Model:** Download a GGUF-format model file compatible with `llama-cpp-python`. Models like Deepseek Coder (e.g., `deepseek-coder-1.3b-instruct.Q4_K_M.gguf`) are good choices. Create a directory (e.g., `./models`) and place your GGUF file there.
+4.  **Install Build Tools & Dependencies for `llama-cpp-python`:**
+    *   `llama-cpp-python` compiles C++ code. You'll likely need build tools:
+        *   On Debian/Ubuntu: `sudo apt-get install build-essential cmake`
+        *   On macOS: Install Xcode Command Line Tools.
+    *   For potential GPU acceleration (NVIDIA GPUs), ensure you have the CUDA toolkit installed. Refer to `llama-cpp-python` documentation for specifics.
+    *   *(Termux users, see "Termux Installation Notes" below for specific dependencies.)*
+5.  **Install `llama-cpp-python` and other dependencies:**
+    *   It's recommended to install `llama-cpp-python` in a way that matches your hardware capabilities (e.g., with OpenBLAS, cuBLAS, Metal support). For example:
+        ```bash
+        # Example for OpenBLAS (CPU optimization)
+        # CMAKE_ARGS="-DLLAMA_OPENBLAS=ON" pip install llama-cpp-python
+        # Example for NVIDIA GPU (cuBLAS)
+        # CMAKE_ARGS="-DLLAMA_CUBLAS=ON" pip install llama-cpp-python
+        # Example for Apple Metal (M-series Macs)
+        # CMAKE_ARGS="-DLLAMA_METAL=ON" pip install llama-cpp-python
+        ```
+        Refer to the [llama-cpp-python documentation](https://github.com/abetlen/llama-cpp-python) for detailed installation instructions tailored to your system.
+    *   After potentially installing `llama-cpp-python` with specific CMAKE_ARGS, install all other project dependencies using Poetry:
+        ```bash
+        poetry install
+        ```
+        *Note: If `llama-cpp-python` is already listed in `pyproject.toml` (which it should be after this refactor, though not explicitly added by this subtask), `poetry install` might attempt to build it. Ensure your environment is prepared *before* running `poetry install` if it handles the `llama-cpp-python` build directly.*
+6.  **Configure Environment Variables:**
+    *   Copy the `.env.example` file to `.env`: `cp .env.example .env`
+    *   Edit `.env` to set the required LlamaCpp parameters, primarily `MODEL_PATH`. Example:
+        ```
+        MODEL_PATH=./models/deepseek-coder-1.3b-instruct.Q4_K_M.gguf
+        N_GPU_LAYERS=0 # Adjust if you have GPU support and want to offload layers
+        N_CTX=2048
+        # Other LlamaCpp parameters as needed (see .env.example)
+        ```
+    *   Optionally, set `SERPAPI_API_KEY` if you need search capabilities for certain tools.
+7.  **Install `ctags`:** Follow the instructions on the [ctags website](https://docs.ctags.io/en/latest/building.html).
+    *   For Termux users: `pkg install universal-ctags`
+8.  **Install `pylint` (Optional but Recommended):** If `pylint` and `pylint-venv` are included as dependencies in `pyproject.toml`, `poetry install` will handle this. Otherwise, you might need to install them manually in your Python environment (e.g., `pip install pylint pylint-venv`).
+9.  **Run Clippinator:**
+    ```bash
+    poetry run clippinator --help
+    poetry run clippinator PROJECT_PATH
+    ```
+10. You can stop it (Ctrl+C) and then it will continue from the last saved state. Use Ctrl+C during agent operation to provide feedback to the main agent.
+
+### Termux Installation Notes
+
+Running Clippinator on Termux requires some specific steps due to its mobile environment:
+
+1.  **Install Core Build Dependencies:**
+    ```bash
+    pkg update && pkg upgrade
+    pkg install build-essential cmake rust libopenblas
+    ```
+    *   `rust` is needed for the `tiktoken` dependency.
+    *   `libopenblas` can be used by `llama-cpp-python` for CPU acceleration.
+2.  **Install `llama-cpp-python` on Termux:**
+    *   You might need to specify `CMAKE_ARGS` to build `llama-cpp-python` correctly and enable features like OpenBLAS:
+        ```bash
+        CMAKE_ARGS="-DLLAMA_OPENBLAS=ON -DCMAKE_SYSTEM_NAME=Android -DCMAKE_SYSTEM_VERSION=$(getprop ro.build.version.sdk)" pip install llama-cpp-python
+        ```
+    *   Building `llama-cpp-python` can take a significant amount of time on device.
+3.  **Install Project Dependencies:** After successfully installing `llama-cpp-python`, run:
+    ```bash
+    poetry install
+    ```
+4.  **Install `ctags`:** `pkg install universal-ctags`
+5.  **Web Browsing Tool:** The built-in web browsing tool (`BrowseWebPage`) uses HTTP requests and does not require a separate browser installation or WebDriver setup on Termux.
+
+### Performance & Configuration Notes
+
+Several internal optimizations and configurations have been implemented, which can be particularly relevant for performance tuning, especially when using local LLMs or on resource-constrained devices:
+
+*   **`ctags` Caching:** Summaries generated using `ctags` for project structure analysis are now cached. The cache is invalidated if a file's modification time changes, reducing redundant `ctags` executions for unchanged files.
+*   **Optimized `pylint` Execution:** When linting multiple files or directories, `pylint` is now invoked once with all targets, rather than per file, making the process more efficient.
+*   **Configurable Auto-Linting:** The `WriteFile` tool, used by agents to write files, has an internal `auto_lint_on_write` parameter (defaults to `True`). This controls whether Pylint is automatically run after a Python file is written. This is currently a code-level configuration.
+*   **Configurable Summarization Context:** The context window for summarization (`max_context_length`) and the number of recent thoughts to retain before summarizing (`keep_n_last_thoughts`) are configurable parameters within the `CustomPromptTemplate` and `BaseMinion` classes. This allows for fine-tuning the balance between context detail and summarization frequency, which can impact performance and token usage. These are currently code-level configurations.
+*   **Termux Compatibility:**
+    *   The `PATH` environment variable handling in terminal tools has been revised to be safer for Termux, preventing the removal of essential system paths.
+    *   Hardcoded `/bin/bash` paths have been changed to `bash` to rely on the system `PATH`.
+
+These configurations are primarily intended for developers working with the Clippinator codebase. Future versions may expose some of these settings through more direct user interfaces or configuration files.
 
 ## Details
 
@@ -35,8 +111,8 @@ For harder tasks, the best way to use it is to look at its work and provide feed
 ![](images/writing.png)
 ![](images/testing.png)
 
-The tool consists of several agents that work together to help the user develop code. The agents are based on GPT-4.
-Note that this is based on GPT-4 which runs for a long time, so it's quite expensive in terms of OpenAI API.
+The tool consists of several agents that work together to help the user develop code. These agents are now powered by a local GGUF-compatible LLM (e.g., Deepseek Coder) run via `llama-cpp-python`.
+This local operation means you are not reliant on external API providers or incurring per-token costs for the core LLM functionalities.
 
 Here is the thing: it has a reasonable workflow by its own. It knows what to do and can do it. When it works, it works
 faster than a human.
@@ -92,9 +168,8 @@ A variety of tools have been implemented (or taken from Langchain):
   server).
 - Human input
 - Pylint
-- Selenium - browser automation for testing. It allows to view the page in a convenient format, get console logs, click,
-  types, execute selenium code
-- HttpGet, GetPage - simpler tools for getting a page
+- BrowseWebPage - Fetches text content from web pages and can follow links to a specified depth. Uses HTTP requests and HTML parsing (does not execute JavaScript).
+- HttpGet, GetPage - simpler tools for getting a page (Note: GetPage might be considered for deprecation in favor of BrowseWebPage's core functionality if only text is needed)
 - DeclareArchitecture, SetCI, Remember - allow the agents to set up their environment, write architecture, remember
   things
 
