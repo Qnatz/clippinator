@@ -45,6 +45,14 @@ class RunBash:
         command_to_execute = ";".join(commands)
         print(f"[INFO] RunBash: Executing command: {command_to_execute} in workdir: {self.workdir}")
 
+        # Prepare environment for the subprocess:
+        # Start with a copy of the current environment.
+        # If the original intent of global `env` was to avoid Python virtual envs,
+        # popping VIRTUAL_ENV is a more targeted approach.
+        # Crucially, PATH is not modified here, preserving Termux's default PATH.
+        current_env = os.environ.copy()
+        current_env.pop('VIRTUAL_ENV', None)
+
         try:
             completed_process = subprocess.run(
                 ['bash', '-c', command_to_execute],
@@ -52,13 +60,6 @@ class RunBash:
                 stderr=subprocess.STDOUT,
                 cwd=self.workdir,
                 timeout=70,
-                # Prepare environment for the subprocess:
-                # Start with a copy of the current environment.
-                # If the original intent of global `env` was to avoid Python virtual envs,
-                # popping VIRTUAL_ENV is a more targeted approach.
-                # Crucially, PATH is not modified here, preserving Termux's default PATH.
-                current_env = os.environ.copy()
-                current_env.pop('VIRTUAL_ENV', None)
                 env=current_env
             )
         except subprocess.TimeoutExpired as error:
