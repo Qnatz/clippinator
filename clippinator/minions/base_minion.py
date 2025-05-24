@@ -198,34 +198,49 @@ class CustomPromptTemplate(StringPromptTemplate):
         hook: Optional[Callable[[CustomPromptTemplate], None]] = None,
         **kwargs: Any  # To catch any other potential kwargs
     ):
-        # Prepare kwargs for super().__init__(), only including those known by StringPromptTemplate
-        # and the Pydantic fields defined on CustomPromptTemplate itself.
-        super_kwargs = {
-            "input_variables": input_variables,
-            "template": template,
-            "tools": tools,
-            "agent_toolnames": agent_toolnames,
-        }
-        # Pass any other captured kwargs that StringPromptTemplate might expect (e.g. validate_template)
-        # Be cautious here: only pass what's truly meant for the parent.
-        # If 'kwargs' might contain unexpected items for StringPromptTemplate, filter them.
-        # For now, we assume other kwargs might be relevant for the parent.
-        super_kwargs.update(kwargs) 
-        
-        super().__init__(**super_kwargs)
-
-        # Set custom instance attributes that are not part of the Pydantic model passed to super()
+        # Set custom instance attributes first. These are specific to CustomPromptTemplate's extended behavior.
         self.max_context_length = max_context_length
         self.keep_n_last_thoughts = keep_n_last_thoughts
         self.project = project
         self.my_summarize_agent = my_summarize_agent
         self.hook = hook
         
+        # Prepare kwargs for super().__init__(). This should only include arguments
+        # that are Pydantic fields of CustomPromptTemplate itself (template, tools, agent_toolnames)
+        # or fields of its parent StringPromptTemplate (input_variables), plus any
+        # other valid Pydantic/BaseModel keyword arguments (like 'callbacks', 'metadata' if used).
+        super_kwargs = {
+            "input_variables": input_variables,
+            "template": template,
+            "tools": tools,
+            "agent_toolnames": agent_toolnames,
+        }
+
+        # Defensive: Ensure that custom parameters (already assigned to self)
+        # are not accidentally passed again in the **kwargs catch-all to super().
+        # This is to prevent them from causing issues if StringPromptTemplate
+        # has 'extra = forbid' and doesn't recognize them.
+        # (These should have been captured by the named parameters already, so this is for safety).
+        if "max_context_length" in kwargs:
+            kwargs.pop("max_context_length")
+        if "keep_n_last_thoughts" in kwargs:
+            kwargs.pop("keep_n_last_thoughts")
+        if "project" in kwargs:
+            kwargs.pop("project")
+        if "my_summarize_agent" in kwargs:
+            kwargs.pop("my_summarize_agent")
+        if "hook" in kwargs:
+            kwargs.pop("hook")
+        
+        # Add any remaining legitimate kwargs that might be for Pydantic BaseModel features
+        # or specific StringPromptTemplate features (e.g., 'validate_template').
+        super_kwargs.update(kwargs) 
+        
+        super().__init__(**super_kwargs)
+        
         # Initialize mutable state attributes
         self.intermediate_steps = [] 
-        # current_context_length, model_steps_processed, all_steps_processed, last_summary
-        # will use their class-defined defaults if not overridden via a kwarg to super()
-        # that Pydantic recognizes for them (which they are not, as they are state).
+        # Class defaults for current_context_length etc. are used by Pydantic if not in super_kwargs.
 
     @property
     def _prompt_type(self) -> str:
