@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import pickle
+import logging # Add logging import
 
 from langchain import LLMChain
 from langchain.agents import AgentExecutor, LLMSingleActionAgent
-from langchain_community.llms import LlamaCpp # Add this import
+from ..llms.llama_cli_llm import CustomLlamaCliLLM # Add CustomLlamaCliLLM import
 
 from clippinator.project import Project
 from clippinator.tools import get_tools, SimpleTool
@@ -22,6 +23,7 @@ from .executioner import Executioner, get_specialized_executioners
 from .prompts import taskmaster_prompt, summarize_prompt, format_description, get_selfcall_objective
 from ..tools.utils import ask_for_feedback
 
+logger = logging.getLogger(__name__) # Initialize logger
 
 class Taskmaster:
     def __init__(
@@ -34,15 +36,12 @@ class Taskmaster:
         self.specialized_executioners = get_specialized_executioners(project)
         self.default_executioner = Executioner(project)
         self.inner_taskmaster = inner_taskmaster
-        llm = LlamaCpp(
-            model_path=os.environ.get("MODEL_PATH", "path/to/default/model.gguf"), # Ensure os is imported
-            n_gpu_layers=int(os.environ.get("N_GPU_LAYERS", 0)),
-            n_batch=int(os.environ.get("N_BATCH", 512)),
-            n_ctx=int(os.environ.get("N_CTX", 2048)),
-            temperature=float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
-            max_tokens=int(os.environ.get("LLAMA_MAX_TOKENS", 1024)),
-            verbose=True # Or as per project's preference
-        )
+        try:
+            llm = CustomLlamaCliLLM()
+        except ValueError as e:
+            logger.error(f"Failed to initialize CustomLlamaCliLLM in Taskmaster: {e}")
+            # Potentially raise a more specific error or handle it as per project's error handling strategy
+            raise e
         tools = get_tools(project)
         tools.append(SelfCall(project).get_tool(try_structured=False))
 
@@ -61,14 +60,21 @@ class Taskmaster:
         )
         tools.append(WarningTool().get_tool())
 
+        # ---- START DEBUG PRINT ----
+        print(f"DEBUG: Taskmaster.__init__: About to create CustomPromptTemplate. Args:")
+        print(f"DEBUG:   type(taskmaster_prompt): {type(taskmaster_prompt)}, taskmaster_prompt: '{str(taskmaster_prompt)[:100]}...'") # Print type and snippet
+        print(f"DEBUG:   type(tools): {type(tools)}, len(tools): {len(tools) if tools is not None else 'None'}")
+        _input_vars = extract_variable_names(taskmaster_prompt, interaction_enabled=True)
+        print(f"DEBUG:   type(_input_vars): {type(_input_vars)}, _input_vars: {_input_vars}")
+        print(f"DEBUG:   type(agent_tool_names): {type(agent_tool_names)}, agent_tool_names: {agent_tool_names}")
+        # ---- END DEBUG PRINT ----
+
         self.prompt = prompt or CustomPromptTemplate(
             template=taskmaster_prompt,
             tools=tools,
-            input_variables=extract_variable_names(
-                taskmaster_prompt, interaction_enabled=True
-            ),
+            input_variables=_input_vars, # Use the pre-calculated _input_vars
             agent_toolnames=agent_tool_names,
-            my_summarize_agent=BasicLLM(base_prompt=summarize_prompt),
+            my_summarize_agent=BasicLLM(base_prompt=summarize_prompt), # This will trigger its own CustomLlamaCliLLM init
             project=project,
         )
         self.prompt.hook = lambda _: self.save_to_file()

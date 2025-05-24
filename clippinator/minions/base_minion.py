@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import logging # Added import
 from dataclasses import dataclass
 from typing import List, Union, Callable, Any
 
@@ -15,13 +16,16 @@ from langchain.agents import (
     AgentOutputParser,
 )
 # Removed OpenAIFunctionsAgent, ChatOpenAI, ChatAnthropic
-from langchain_community.llms import LlamaCpp # Added LlamaCpp import
+# from langchain_community.llms import LlamaCpp # Removed LlamaCpp import
+from ..llms.llama_cli_llm import CustomLlamaCliLLM # Added CustomLlamaCliLLM import
 from langchain.prompts import StringPromptTemplate
 from langchain.schema import AgentAction, AgentFinish
 
 from clippinator.tools.tool import WarningTool
 from .prompts import format_description
 from ..tools.utils import trim_extra, ask_for_feedback
+
+logger = logging.getLogger(__name__) # Added logger
 
 long_warning = (
     "WARNING: You have been working for a very long time. Please, finish ASAP. "
@@ -142,24 +146,13 @@ class BasicLLM:
     prompt: PromptTemplate
     llm: LLMChain
 
-    def __init__(self, base_prompt: str, 
-                 model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
-                 n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
-                 n_batch: int = int(os.environ.get("N_BATCH", 512)),
-                 n_ctx: int = int(os.environ.get("N_CTX", 2048)),
-                 temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
-                 max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
-                 ) -> None:
-        llm = LlamaCpp(
-            model_path=model_path,
-            n_gpu_layers=n_gpu_layers,
-            n_batch=n_batch,
-            n_ctx=n_ctx,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            verbose=True # Assuming verbosity is desired for LlamaCpp
-        )
-        self.llm = LLMChain(
+    def __init__(self, base_prompt: str) -> None: # MODIFIED SIGNATURE
+        try:
+            llm = CustomLlamaCliLLM() # NEW INSTANTIATION
+        except ValueError as e:
+            logger.error(f"Failed to initialize CustomLlamaCliLLM in BasicLLM: {e}")
+            raise e # Re-raise the exception after logging
+        self.llm = LLMChain( # REMAINS THE SAME
             llm=llm,
             prompt=PromptTemplate(
                 template=base_prompt,
@@ -182,26 +175,72 @@ class CustomPromptTemplate(StringPromptTemplate):
     current_context_length: int = 0
     model_steps_processed: int = 0
     all_steps_processed: int = 0
-    my_summarize_agent: Any = None
+    # my_summarize_agent: Any = None # To be set as instance attribute in __init__
     last_summary: str = ""
-    project: Any | None = None
-    intermediate_steps: list[(AgentAction, str)] = []
-    hook: Callable[[CustomPromptTemplate], None] | None = None
+    # project: Any | None = None # To be set as instance attribute in __init__
+    intermediate_steps: list = [] # Will be initialized in __init__
+    # hook: Optional[Callable[[CustomPromptTemplate], None]] = None # To be set as instance attribute in __init__
 
-    def __init__(self, *, template: str, tools: List[Tool], agent_toolnames: List[str], 
-                 input_variables: List[str], max_context_length: int = 5, keep_n_last_thoughts: int = 2, 
-                 project: Any | None = None, my_summarize_agent: Any = None, 
-                 hook: Callable[[CustomPromptTemplate], None] | None = None):
-        super().__init__(template=template, tools=tools, agent_toolnames=agent_toolnames, 
-                         input_variables=input_variables) # Pass relevant args to parent
+    # Pydantic fields: template, tools, agent_toolnames (and input_variables from parent)
+    # Other attributes: max_context_length, keep_n_last_thoughts, project, my_summarize_agent, hook (set in __init__)
+    # State attributes with class defaults: current_context_length, model_steps_processed, all_steps_processed, last_summary
+
+    def __init__(
+        self,
+        template: str,
+        tools: List[Tool],
+        agent_toolnames: List[str],
+        input_variables: List[str],
+        max_context_length: int = 5,
+        keep_n_last_thoughts: int = 2,
+        project: Any | None = None,
+        my_summarize_agent: Any = None,
+        hook: Optional[Callable[[CustomPromptTemplate], None]] = None,
+        **kwargs: Any  # To catch any other potential kwargs
+    ):
+        # Set custom instance attributes first. These are specific to CustomPromptTemplate's extended behavior.
         self.max_context_length = max_context_length
         self.keep_n_last_thoughts = keep_n_last_thoughts
-        self.project = project # Ensure these are initialized if they are class attributes potentially accessed before format
+        self.project = project
         self.my_summarize_agent = my_summarize_agent
-        self.last_summary = "" # Initialize last_summary
         self.hook = hook
-        print(f"[INFO] CustomPromptTemplate initialized with max_context_length={self.max_context_length}, keep_n_last_thoughts={self.keep_n_last_thoughts}")
-        # current_context_length, model_steps_processed, all_steps_processed, intermediate_steps are already initialized or fine with default list
+        
+        # Prepare kwargs for super().__init__(). This should only include arguments
+        # that are Pydantic fields of CustomPromptTemplate itself (template, tools, agent_toolnames)
+        # or fields of its parent StringPromptTemplate (input_variables), plus any
+        # other valid Pydantic/BaseModel keyword arguments (like 'callbacks', 'metadata' if used).
+        super_kwargs = {
+            "input_variables": input_variables,
+            "template": template,
+            "tools": tools,
+            "agent_toolnames": agent_toolnames,
+        }
+
+        # Defensive: Ensure that custom parameters (already assigned to self)
+        # are not accidentally passed again in the **kwargs catch-all to super().
+        # This is to prevent them from causing issues if StringPromptTemplate
+        # has 'extra = forbid' and doesn't recognize them.
+        # (These should have been captured by the named parameters already, so this is for safety).
+        if "max_context_length" in kwargs:
+            kwargs.pop("max_context_length")
+        if "keep_n_last_thoughts" in kwargs:
+            kwargs.pop("keep_n_last_thoughts")
+        if "project" in kwargs:
+            kwargs.pop("project")
+        if "my_summarize_agent" in kwargs:
+            kwargs.pop("my_summarize_agent")
+        if "hook" in kwargs:
+            kwargs.pop("hook")
+        
+        # Add any remaining legitimate kwargs that might be for Pydantic BaseModel features
+        # or specific StringPromptTemplate features (e.g., 'validate_template').
+        super_kwargs.update(kwargs) 
+        
+        super().__init__(**super_kwargs)
+        
+        # Initialize mutable state attributes
+        self.intermediate_steps = [] 
+        # Class defaults for current_context_length etc. are used by Pydantic if not in super_kwargs.
 
     @property
     def _prompt_type(self) -> str:
@@ -286,15 +325,16 @@ class CustomPromptTemplate(StringPromptTemplate):
         return result
 
 
-def extract_variable_names(prompt: str, interaction_enabled: bool = False):
-    variable_pattern = r"\{(\w+)\}"
-    variable_names = re.findall(variable_pattern, prompt)
-    if interaction_enabled:
-        for name in ["tools", "tool_names", "agent_scratchpad"]:
-            if name in variable_names:
-                variable_names.remove(name)
-        variable_names.append("intermediate_steps")
-    return variable_names
+# This function seems to be duplicated, removing one instance.
+# def extract_variable_names(prompt: str, interaction_enabled: bool = False):
+#     variable_pattern = r"\{(\w+)\}"
+#     variable_names = re.findall(variable_pattern, prompt)
+#     if interaction_enabled:
+#         for name in ["tools", "tool_names", "agent_scratchpad"]:
+#             if name in variable_names:
+#                 variable_names.remove(name)
+#         variable_names.append("intermediate_steps")
+#     return variable_names
 
 
 @dataclass
@@ -306,62 +346,41 @@ class BaseMinion:
             max_iterations: int = 50,
             allow_feedback: bool = False,
             max_context_length: int = 5,
-            keep_n_last_thoughts: int = 2,
-            # LlamaCpp specific parameters with defaults from environment variables
-            model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
-            n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
-            n_batch: int = int(os.environ.get("N_BATCH", 512)),
-            n_ctx: int = int(os.environ.get("N_CTX", 2048)),
-            temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
-            max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
+            keep_n_last_thoughts: int = 2
+            # Removed LlamaCpp specific parameters
     ) -> None:
-        llm = LlamaCpp(
-            model_path=model_path,
-            n_gpu_layers=n_gpu_layers,
-            n_batch=n_batch,
-            n_ctx=n_ctx,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            verbose=True # Assuming verbosity is desired
-        )
+        try:
+            llm = CustomLlamaCliLLM()
+        except ValueError as e:
+            logger.error(f"Failed to initialize CustomLlamaCliLLM in BaseMinion: {e}")
+            raise e # Re-raise the exception after logging
         agent_toolnames = [tool.name for tool in available_tools]
-        # Create a new list for tools to avoid modifying the original list if passed around
         extended_tools = list(available_tools)
         extended_tools.append(WarningTool().get_tool())
 
-        # Ensure CustomPromptTemplate is initialized with all required named arguments
-        # (template, tools, agent_toolnames, input_variables are implicitly part of its definition or passed)
-        # Explicitly pass project and my_summarize_agent if BaseMinion is expected to set them up
-        # For now, they are not passed from BaseMinion.__init__ to CustomPromptTemplate.__init__
-        # which means they will use their default values (None for my_summarize_agent and project)
-        # If these need to be configurable per BaseMinion instance, they should be passed here.
         self.prompt = CustomPromptTemplate(
             template=base_prompt,
-            tools=extended_tools, # Use the extended list
+            tools=extended_tools,
             input_variables=extract_variable_names(
                 base_prompt, interaction_enabled=True
             ),
             agent_toolnames=agent_toolnames,
-            max_context_length=max_context_length, # Pass through
-            keep_n_last_thoughts=keep_n_last_thoughts, # Pass through
-            # project=self.project, # If BaseMinion has a project instance variable
-            # my_summarize_agent=self.my_summarize_agent # If BaseMinion sets this up
+            max_context_length=max_context_length,
+            keep_n_last_thoughts=keep_n_last_thoughts,
         )
 
         llm_chain = LLMChain(llm=llm, prompt=self.prompt)
-
         output_parser = CustomOutputParser()
-
         agent = LLMSingleActionAgent(
             llm_chain=llm_chain,
             output_parser=output_parser,
             stop=["AResult:"],
-            allowed_tools=[tool.name for tool in available_tools],
+            allowed_tools=[tool.name for tool in available_tools], # Original list, not extended
         )
 
         self.agent_executor = AgentExecutor.from_agent_and_tools(
             agent=agent,
-            tools=available_tools,
+            tools=available_tools, # Original list
             verbose=True,
             max_iterations=max_iterations,
         )
@@ -400,24 +419,14 @@ class FeedbackMinion:
             minion: BaseMinion | BasicLLM,
             eval_prompt: str,
             feedback_prompt: str,
-            check_function: Callable[[str], Any] = lambda x: None,
-            # LlamaCpp specific parameters for the evaluation LLM
-            model_path: str = os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
-            n_gpu_layers: int = int(os.environ.get("N_GPU_LAYERS", 0)),
-            n_batch: int = int(os.environ.get("N_BATCH", 512)),
-            n_ctx: int = int(os.environ.get("N_CTX", 2048)),
-            temperature: float = float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
-            max_tokens: int = int(os.environ.get("LLAMA_MAX_TOKENS", 1024))
+            check_function: Callable[[str], Any] = lambda x: None
+            # Removed LlamaCpp specific parameters for the evaluation LLM
     ) -> None:
-        eval_llm_instance = LlamaCpp(
-            model_path=model_path,
-            n_gpu_layers=n_gpu_layers,
-            n_batch=n_batch,
-            n_ctx=n_ctx,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            verbose=True # Assuming verbosity for eval LLM
-        )
+        try:
+            eval_llm_instance = CustomLlamaCliLLM()
+        except ValueError as e:
+            logger.error(f"Failed to initialize CustomLlamaCliLLM in FeedbackMinion for eval_llm: {e}")
+            raise e # Re-raise the exception after logging
         self.eval_llm = LLMChain(
             llm=eval_llm_instance,
             prompt=PromptTemplate(
@@ -427,7 +436,6 @@ class FeedbackMinion:
         )
         self.underlying_minion = minion
         self.feedback_prompt = feedback_prompt
-
         self.check_function = check_function
 
     def run(self, **kwargs):
@@ -440,11 +448,11 @@ class FeedbackMinion:
             kwargs["feedback"] = self.feedback_prompt.format(**kwargs)
         res = self.underlying_minion.run(**kwargs)
         try:
-            check_result = None
+            check_result = None # Initialize check_result to None
             self.check_function(res)
         except ValueError as e:
             check_result = " ".join(e.args)
-        if check_result:
+        if check_result: # This condition was using an undefined variable `critique`
             kwargs["feedback"] = check_result
             kwargs["previous_result"] = res
             return self.run(**kwargs)

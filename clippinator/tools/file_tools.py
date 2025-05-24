@@ -1,12 +1,17 @@
 import os
+import logging # Added logging
 from dataclasses import dataclass
 from typing import Any
 
+#<<<<<<< feature/use-local-llm
+#=======
 #import os  # Added import os
+#>>>>>>> master
 from langchain import PromptTemplate
 from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
 from langchain.chains.summarize import load_summarize_chain
-from langchain_community.llms import LlamaCpp  # Replaced ChatOpenAI with LlamaCpp
+# from langchain_community.llms import LlamaCpp # Removed LlamaCpp
+from ..llms.llama_cli_llm import CustomLlamaCliLLM # Added CustomLlamaCliLLM
 from langchain.docstore.document import Document
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
@@ -15,6 +20,7 @@ from langchain.text_splitter import (
 from clippinator.tools.tool import SimpleTool
 from .utils import trim_extra, unjson
 
+logger = logging.getLogger(__name__) # Initialized logger
 
 def strip_quotes(inp: str) -> str:
     inp = inp.strip()
@@ -416,18 +422,16 @@ class SummarizeFile(SimpleTool):
         mr_prompt = PromptTemplate(
             template=mr_prompt_template, input_variables=["text"]
         )
-        # Instantiate LlamaCpp similar to taskmaster.py
-        llm = LlamaCpp(
-            model_path=os.environ.get("MODEL_PATH", "path/to/default/model.gguf"),
-            n_gpu_layers=int(os.environ.get("N_GPU_LAYERS", 0)),
-            n_batch=int(os.environ.get("N_BATCH", 512)),
-            n_ctx=int(os.environ.get("N_CTX", 2048)),
-            temperature=float(os.environ.get("LLAMA_TEMPERATURE", 0.1)),
-            max_tokens=int(os.environ.get("LLAMA_MAX_TOKENS", 1024)),
-            verbose=True  # Or as per project's preference, set to True for now
-        )
+        try:
+            llm = CustomLlamaCliLLM()
+        except ValueError as e:
+            logger.error(f"Failed to initialize CustomLlamaCliLLM in SummarizeFile: {e}")
+            # Depending on desired behavior, either raise e or handle it
+            # For example, falling back to a default LLM or raising an error to halt execution
+            raise e # Or handle as appropriate for the application
+
         self.summary_agent = load_summarize_chain(
-            llm,  # Use LlamaCpp instance
+            llm,  # Use CustomLlamaCliLLM instance
             chain_type="map_reduce",
             map_prompt=mr_prompt,
             combine_prompt=mr_prompt,
