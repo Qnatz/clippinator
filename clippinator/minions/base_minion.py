@@ -159,16 +159,17 @@ class CustomPromptTemplate(StringPromptTemplate):
     def _prompt_type(self) -> str:
         return "taskmaster"
 
-    def thought_log(self, thoughts: list[tuple[AgentAction, str]]) -> str: # Corrected type hint
+    def thought_log(self, thoughts: list[tuple[AgentAction, str]]) -> str:
         result = ""
-        # For ReAct, the 'thoughts' are the intermediate_steps (AgentAction, str_observation)
         for action, observation in thoughts:
-            # action.log already contains "Thought: ...
-Action: ...
-Action Input: ..."
+            # action.log is expected to contain the multi-line string:
+            # Thought: ...
+            # Action: ...
+            # Action Input: ...
             result += action.log 
-            # Append the observation, which is the result of the action.
-            result += f"\nObservation: {str(observation)}\n" 
+            result += f"""
+Observation: {str(observation)}
+"""
         return result
 
     def format(self, **kwargs) -> str:
