@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import logging # Added import
-from dataclasses import dataclass
+from dataclasses import dataclass, field # Updated import
 from typing import List, Union, Callable, Any, Optional # Added Optional
 
 import langchain.schema
@@ -142,22 +142,26 @@ def extract_variable_names(prompt: str, interaction_enabled: bool = False):
 
 # Removed get_model function
 
-class BasicLLM: # No @dataclass
-    # No class-level field declarations for prompt and llm
+@dataclass
+class BasicLLM:
+    base_prompt: str  # Field to be provided in __init__
+    
+    # Fields to be initialized in __post_init__
+    prompt: PromptTemplate = field(init=False)
+    llm: LLMChain = field(init=False)
 
-    def __init__(self, base_prompt: str) -> None:
-        # Correct implementation that defines self.prompt and self.llm
+    def __post_init__(self):
         try:
             llm_instance = CustomLlamaCliLLM() 
         except ValueError as e:
             logger.error(f"Failed to initialize CustomLlamaCliLLM in BasicLLM: {e}")
             raise e 
         
-        self.prompt: PromptTemplate = PromptTemplate( # Added type hint for instance attr
-            template=base_prompt,
-            input_variables=extract_variable_names(base_prompt),
+        self.prompt = PromptTemplate(
+            template=self.base_prompt, # Use self.base_prompt here
+            input_variables=extract_variable_names(self.base_prompt),
         )
-        self.llm: LLMChain = LLMChain( # Added type hint for instance attr
+        self.llm = LLMChain( 
             llm=llm_instance,
             prompt=self.prompt, 
         )
