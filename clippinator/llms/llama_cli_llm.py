@@ -130,68 +130,93 @@ class CustomLlamaCliLLM(LLM):
     def _call(
         self,
         prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        stop: Optional[List[str]] = None, # This 'stop' is from Langchain's LLM._call signature
+        run_manager: Optional[CallbackManagerForLLMRun] = None, # Added run_manager
         **kwargs: Any,
     ) -> str:
-        # Prefer 'stop' kwarg if passed to _call, otherwise use instance's stop_sequences
-        current_stop_sequences = kwargs.get('stop', self.stop_sequences)
-        
+        # Use 'stop' from kwargs if provided during invocation, 
+        # otherwise use 'stop' from _call signature (passed by Langchain),
+        # otherwise use instance's 'self.stop_sequences'.
+        effective_stop_sequences = kwargs.get('stop', stop or self.stop_sequences)
+
+        # Add stop sequence awareness to the prompt (as per issue)
+        # This part might be redundant if --stop is effective, but keeping for consistency with issue.
+        # However, the original issue's example for _call adds this to the prompt *conditionally*.
+        # Let's make it conditional as per the issue's CustomLlamaCliLLM._call.
         final_prompt = prompt
-        if current_stop_sequences:
-            # Simple prompt injection for stop sequences
-            stop_instruction = f"\n\nImportant: You MUST stop generating further output when you encounter any of the following phrases: {', '.join(current_stop_sequences)}"
-            final_prompt += stop_instruction
-            # logger.info(f"Stop sequences {current_stop_sequences} provided. Appending instruction to prompt.")
-            # No longer warning about ignoring, as we are handling it via prompt injection.
+        if effective_stop_sequences:
+            # The issue example prompt is "Instruction: Complete your response and end with one of these: {', '.join(stop)}"
+            # The existing code adds "Important: You MUST stop generating further output when you encounter any of the following phrases: ..."
+            # Let's use the one from the issue for this specific modification.
+            final_prompt += f"\n\nInstruction: Complete your response and end with one of these: {', '.join(effective_stop_sequences)}"
 
-        # Ensure cli_path and model_path are validated and available
-        if not self.cli_path or not self.model_path:
-             # This should ideally be caught by validators, but as a safeguard:
-            raise ValueError("cli_path or model_path is not configured properly.")
+        # Configure generation parameters (as per issue)
+        generation_config = {
+            "temperature": kwargs.get('temperature', self.temperature),
+            "top_p": kwargs.get('top_p', self.top_p),
+            "top_k": kwargs.get('top_k', self.top_k),
+            "repeat_penalty": kwargs.get('repeat_penalty', self.repeat_penalty),
+            "n_predict": kwargs.get('n_predict', self.n_predict),
+            # "stop": effective_stop_sequences or [] # This was in the issue's generation_config but not used in command directly by name
+        }
 
+        # Build execution command (as per issue)
         command = [
             self.cli_path,
             "-m", self.model_path,
             "-p", final_prompt, # Use the potentially modified prompt
-            "-c", str(self.n_ctx),
-            "-t", str(self.n_threads),
-            "--n-predict", str(self.n_predict),
-            "--temp", str(self.temperature),
-            "--top-k", str(self.top_k),
-            "--top-p", str(self.top_p),
-            "--repeat-penalty", str(self.repeat_penalty),
-            "--n-gpu-layers", str(self.n_gpu_layers)
+            "-c", str(self.n_ctx), # Added from existing functionality, seems important
+            "-t", str(self.n_threads), # Added from existing functionality
+            "--n-predict", str(generation_config["n_predict"]),
+            "--temp", str(generation_config["temperature"]),
+            "--top-p", str(generation_config["top_p"]),
+            "--top-k", str(generation_config["top_k"]),
+            "--repeat-penalty", str(generation_config["repeat_penalty"]),
+            "--n-gpu-layers", str(self.n_gpu_layers) # Added from existing functionality
         ]
+        
+        # Add stop sequences if supported and available (as per issue)
+        if effective_stop_sequences:
+            command += ["--stop"] + list(effective_stop_sequences)
         
         logger.debug(f"Executing llama-cli command: {' '.join(command)}")
 
+        # Execute and process output (as per issue)
         try:
-            process = subprocess.run(
+            result = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
-                check=True
+                timeout=60  # Added timeout
             )
+            output = result.stdout.strip()
             
-            generated_text = process.stdout.strip()
-            # Basic parsing, might need refinement. 
-            # If prompt injection was used, the injected text might be part of the output.
-            # This logic attempts to remove the original prompt (including injected stop instructions).
-            if generated_text.startswith(final_prompt): 
-                generated_text = generated_text[len(final_prompt):].lstrip()
-            elif generated_text.startswith(prompt): # Fallback if only original prompt is found
-                 generated_text = generated_text[len(prompt):].lstrip()
-            
-            if process.stderr: # Log stderr even if process didn't fail
-                logger.debug(f"llama-cli stderr: {process.stderr.strip()}")
-            return generated_text
+            if result.stderr: # Log stderr even if process didn't fail
+                logger.debug(f"llama-cli stderr: {result.stderr.strip()}")
 
-        except subprocess.CalledProcessError as e:
+            # Manual stop sequence truncation (as per issue)
+            # This should ideally happen AFTER removing the prompt from the output.
+            # The existing code already has some logic for removing the prompt from output. Let's try to integrate.
+            
+            # Attempt to remove the prompt (original or modified) from the output
+            if output.startswith(final_prompt):
+                output = output[len(final_prompt):].lstrip()
+            elif output.startswith(prompt): # Fallback if only original prompt is found
+                 output = output[len(prompt):].lstrip()
+
+            for seq in effective_stop_sequences or []:
+                if seq in output:
+                    output = output.split(seq)[0]
+                    break
+                    
+            return output
+        except subprocess.TimeoutExpired:
+            logger.warning("llama-cli generation timeout occurred")
+            return "Generation timeout occurred" # As per issue
+        except subprocess.CalledProcessError as e: # Keep existing error handling
             logger.error(f"llama-cli execution failed. STDOUT: {e.stdout.strip()} STDERR: {e.stderr.strip()}")
-            # Consider whether to return stderr or raise a more specific exception
             raise ValueError(f"Error from llama-cli: {e.stderr.strip()}") from e
-        except FileNotFoundError: # Should be caught by validator, but good practice
+        except FileNotFoundError: 
             logger.error(f"LLAMA_CLI_PATH not found at {self.cli_path}.")
             raise FileNotFoundError(f"llama-cli executable not found at {self.cli_path}")
         except Exception as e:
