@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 import re
 import logging # Added import
-from dataclasses import dataclass, field # Updated import
+from dataclasses import dataclass, field # Keep field for BasicLLM
 from typing import List, Union, Callable, Any, Optional # Added Optional
+from pydantic.v1 import Field # Added Pydantic v1 Field
 
 import langchain.schema
 from langchain.chains.llm import LLMChain # Updated import
@@ -115,7 +116,7 @@ class CustomPromptTemplate(StringPromptTemplate):
     # my_summarize_agent: Any = None # To be set as instance attribute in __init__
     last_summary: str = ""
     # project: Any | None = None # To be set as instance attribute in __init__
-    intermediate_steps: list = field(default_factory=list) # Ensured default_factory
+    intermediate_steps: list = Field(default_factory=list) # Changed to pydantic.v1.Field
     # hook: Optional[Callable[[CustomPromptTemplate], None]] = None # To be set as instance attribute in __init__
 
     # Pydantic fields: template, tools, agent_toolnames (and input_variables from parent)
