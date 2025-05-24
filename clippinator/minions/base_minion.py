@@ -147,18 +147,23 @@ class BasicLLM:
     prompt: PromptTemplate
     llm: LLMChain
 
-    def __init__(self, base_prompt: str) -> None: # MODIFIED SIGNATURE
+    def __init__(self, base_prompt: str) -> None:
         try:
-            llm = CustomLlamaCliLLM() # NEW INSTANTIATION
+            llm_instance = CustomLlamaCliLLM() 
         except ValueError as e:
             logger.error(f"Failed to initialize CustomLlamaCliLLM in BasicLLM: {e}")
-            raise e # Re-raise the exception after logging
-        self.llm = LLMChain( # REMAINS THE SAME
-            llm=llm,
-            prompt=PromptTemplate(
-                template=base_prompt,
-                input_variables=extract_variable_names(base_prompt),
-            ),
+            raise e 
+        
+        # Initialize self.prompt using base_prompt
+        self.prompt = PromptTemplate(
+            template=base_prompt,
+            input_variables=extract_variable_names(base_prompt),
+        )
+        
+        # Initialize self.llm using the llm_instance and the newly created self.prompt
+        self.llm = LLMChain( 
+            llm=llm_instance,
+            prompt=self.prompt, 
         )
 
     def run(self, **kwargs):
