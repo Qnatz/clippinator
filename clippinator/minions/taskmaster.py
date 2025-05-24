@@ -13,7 +13,6 @@ from clippinator.tools import get_tools, SimpleTool
 from clippinator.tools.subagents import Subagent
 from clippinator.tools.tool import WarningTool
 from .base_minion import (
-    CustomOutputParser,
     CustomPromptTemplate,
     extract_variable_names,
     # get_model, <--- REMOVE THIS
