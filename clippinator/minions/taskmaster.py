@@ -4,8 +4,8 @@ import os
 import pickle
 import logging # Add logging import
 
-from langchain.chains.llm import LLMChain # Updated import
-from langchain.agents import AgentExecutor, LLMSingleActionAgent
+from langchain.chains.llm import LLMChain # Updated import for consistency
+from langchain.agents import AgentExecutor, create_react_agent # Updated imports
 from ..llms.llama_cli_llm import CustomLlamaCliLLM # Add CustomLlamaCliLLM import
 
 from clippinator.project import Project
@@ -79,38 +79,47 @@ class Taskmaster:
         )
         self.prompt.hook = lambda _: self.save_to_file()
 
-        llm_chain = LLMChain(llm=llm, prompt=self.prompt)
+        # llm_chain = LLMChain(llm=llm, prompt=self.prompt) # Removed
+        # output_parser = CustomOutputParser() # CustomOutputParser is not directly used here
 
-        output_parser = CustomOutputParser()
-
-        agent = LLMSingleActionAgent(
-            llm_chain=llm_chain,
-            output_parser=output_parser,
-            stop=["AResult:"],
-            allowed_tools=[tool.name for tool in tools],
+        agent = create_react_agent(
+            llm=llm,
+            tools=tools, # tools is the correct variable in Taskmaster
+            prompt=self.prompt
         )
-        self.agent_executor = AgentExecutor.from_agent_and_tools(
+        self.agent_executor = AgentExecutor(
             agent=agent,
-            tools=tools,
+            tools=tools, # tools is the correct variable in Taskmaster
             verbose=True,
-            max_iterations=1000,  # We have summarization
+            handle_parsing_errors=True,
+            max_iterations=10, # As per instruction for debugging
+            early_stopping_method="generate",
+            return_intermediate_steps=True
         )
 
-    def run(self, **kwargs):
-        kwargs["specialized_minions"] = "\n".join(
+    def invoke(self, inputs: dict) -> dict: # Renamed run to invoke, input is dict
+        # Ensure inputs is a mutable copy if we are modifying it.
+        inputs = inputs.copy()
+
+        inputs["specialized_minions"] = "\n".join(
             minion.expl() for minion in self.specialized_executioners.values()
         )
-        kwargs["format_description"] = format_description
+        inputs["format_description"] = format_description
+        # Ensure 'input' is set for the agent if 'objective' is the primary input key.
+        if 'objective' in inputs and 'input' not in inputs:
+            inputs['input'] = inputs.pop('objective')
+            
         try:
-            return (
-                    self.agent_executor.run(**kwargs)
-                    or "No result. The execution was probably unsuccessful."
-            )
+            result_dict = self.agent_executor.invoke(inputs) 
+            # The problem description implies returning the dict, not just output string
+            return result_dict 
+            
         except KeyboardInterrupt:
             feedback = ask_for_feedback(lambda: self.project.menu(self.prompt))
             if feedback:
-                self.prompt.intermediate_steps += [feedback]
-            return self.run(**kwargs)
+                self.prompt.intermediate_steps += [feedback] # Assuming feedback is compatible
+            # Recursive call to self.invoke with original inputs (potentially modified by feedback mechanism)
+            return self.invoke(inputs) # Changed to self.invoke
 
     def save_to_file(self, path: str = ""):
         if not os.path.exists(self.project.path):
@@ -159,7 +168,12 @@ class SelfCall(SimpleTool):
         cur_objective = self._get_resulting_objective(self.initial_project, sub_folder)
         cur_sub_project = Project(sub_project_path, cur_objective, architecture="")
         taskmaster = Taskmaster(cur_sub_project, inner_taskmaster=True)
-        taskmaster.run(**cur_sub_project.prompt_fields())
+        # Call the public run method of the Taskmaster instance
+        taskmaster_inputs = cur_sub_project.prompt_fields()
+        # Ensure 'input' key if the nested Taskmaster's agent expects it
+        if 'objective' in taskmaster_inputs and 'input' not in taskmaster_inputs:
+             taskmaster_inputs['input'] = taskmaster_inputs.pop('objective')
+        taskmaster.invoke(taskmaster_inputs) # Changed to taskmaster.invoke
         return f"{sub_folder} folder processed."
 
     def func(self, args: str):

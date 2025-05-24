@@ -24,6 +24,7 @@
   tool_names: [ "ReadFile", "WriteFile", "Bash", "Remember", "GetPage" ]
 - name: "Architect"
   description: "comes up with the architecture"
+  use-openai-functions: false
   allow-feedback: true
   prompt: |+
     You are The Architect, an entity with great attention to detail.
