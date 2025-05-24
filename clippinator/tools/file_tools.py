@@ -3,10 +3,6 @@ import logging # Added logging
 from dataclasses import dataclass
 from typing import Any
 
-#<<<<<<< feature/use-local-llm
-#=======
-#import os  # Added import os
-#>>>>>>> master
 from langchain import PromptTemplate
 from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
 from langchain.chains.summarize import load_summarize_chain
