@@ -4,7 +4,7 @@ import os
 import pickle
 import logging # Add logging import
 
-from langchain import LLMChain
+from langchain.chains.llm import LLMChain # Updated import
 from langchain.agents import AgentExecutor, LLMSingleActionAgent
 from ..llms.llama_cli_llm import CustomLlamaCliLLM # Add CustomLlamaCliLLM import
 

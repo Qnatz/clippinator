@@ -4,11 +4,11 @@ import os
 import re
 import logging # Added import
 from dataclasses import dataclass
-from typing import List, Union, Callable, Any
+from typing import List, Union, Callable, Any, Optional # Added Optional
 
 import langchain.schema
-from langchain.chains import LLMChain # Updated import
-from langchain.prompts import PromptTemplate # Updated import
+from langchain.chains.llm import LLMChain # Updated import
+from langchain_core.prompts import PromptTemplate # Updated import
 from langchain.agents import (
     Tool,
     AgentExecutor,
@@ -22,6 +22,7 @@ from langchain.prompts import StringPromptTemplate
 from langchain.schema import AgentAction, AgentFinish
 
 from clippinator.tools.tool import WarningTool
+from clippinator.project.project import Project # Added Project import
 from .prompts import format_description
 from ..tools.utils import trim_extra, ask_for_feedback
 
@@ -170,7 +171,12 @@ class CustomPromptTemplate(StringPromptTemplate):
     # The list of tools available
     tools: List[Tool]
     agent_toolnames: List[str]
-    # max_context_length: int = 5 # Now an instance variable
+    max_context_length: int
+    keep_n_last_thoughts: int
+    project: Optional['Project'] 
+    my_summarize_agent: Optional['BasicLLM'] 
+    hook: Optional[Callable[['CustomPromptTemplate'], None]]
+    # current_context_length: int = 5 # Now an instance variable
     # keep_n_last_thoughts: int = 2 # Now an instance variable
     current_context_length: int = 0
     model_steps_processed: int = 0
@@ -193,54 +199,30 @@ class CustomPromptTemplate(StringPromptTemplate):
         input_variables: List[str],
         max_context_length: int = 5,
         keep_n_last_thoughts: int = 2,
-        project: Any | None = None,
-        my_summarize_agent: Any = None,
-        hook: Optional[Callable[[CustomPromptTemplate], None]] = None,
-        **kwargs: Any  # To catch any other potential kwargs
+        project: Optional['Project'] = None,
+        my_summarize_agent: Optional['BasicLLM'] = None,
+        hook: Optional[Callable[['CustomPromptTemplate'], None]] = None,
+        **kwargs: Any
     ):
-        # Set custom instance attributes first. These are specific to CustomPromptTemplate's extended behavior.
-        self.max_context_length = max_context_length
-        self.keep_n_last_thoughts = keep_n_last_thoughts
-        self.project = project
-        self.my_summarize_agent = my_summarize_agent
-        self.hook = hook
-        
-        # Prepare kwargs for super().__init__(). This should only include arguments
-        # that are Pydantic fields of CustomPromptTemplate itself (template, tools, agent_toolnames)
-        # or fields of its parent StringPromptTemplate (input_variables), plus any
-        # other valid Pydantic/BaseModel keyword arguments (like 'callbacks', 'metadata' if used).
         super_kwargs = {
             "input_variables": input_variables,
             "template": template,
             "tools": tools,
             "agent_toolnames": agent_toolnames,
+            "max_context_length": max_context_length,
+            "keep_n_last_thoughts": keep_n_last_thoughts,
+            "project": project,
+            "my_summarize_agent": my_summarize_agent,
+            "hook": hook,
         }
-
-        # Defensive: Ensure that custom parameters (already assigned to self)
-        # are not accidentally passed again in the **kwargs catch-all to super().
-        # This is to prevent them from causing issues if StringPromptTemplate
-        # has 'extra = forbid' and doesn't recognize them.
-        # (These should have been captured by the named parameters already, so this is for safety).
-        if "max_context_length" in kwargs:
-            kwargs.pop("max_context_length")
-        if "keep_n_last_thoughts" in kwargs:
-            kwargs.pop("keep_n_last_thoughts")
-        if "project" in kwargs:
-            kwargs.pop("project")
-        if "my_summarize_agent" in kwargs:
-            kwargs.pop("my_summarize_agent")
-        if "hook" in kwargs:
-            kwargs.pop("hook")
         
-        # Add any remaining legitimate kwargs that might be for Pydantic BaseModel features
-        # or specific StringPromptTemplate features (e.g., 'validate_template').
-        super_kwargs.update(kwargs) 
+        for key in ["max_context_length", "keep_n_last_thoughts", "project", "my_summarize_agent", "hook"]:
+            kwargs.pop(key, None) 
         
+        super_kwargs.update(kwargs)
         super().__init__(**super_kwargs)
         
-        # Initialize mutable state attributes
-        self.intermediate_steps = [] 
-        # Class defaults for current_context_length etc. are used by Pydantic if not in super_kwargs.
+        self.intermediate_steps: list = []
 
     @property
     def _prompt_type(self) -> str:
