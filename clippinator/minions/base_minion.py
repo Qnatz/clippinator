@@ -142,26 +142,22 @@ def extract_variable_names(prompt: str, interaction_enabled: bool = False):
 
 # Removed get_model function
 
-@dataclass
-class BasicLLM:
-    prompt: PromptTemplate
-    llm: LLMChain
+class BasicLLM: # No @dataclass
+    # No class-level field declarations for prompt and llm
 
     def __init__(self, base_prompt: str) -> None:
+        # Correct implementation that defines self.prompt and self.llm
         try:
             llm_instance = CustomLlamaCliLLM() 
         except ValueError as e:
             logger.error(f"Failed to initialize CustomLlamaCliLLM in BasicLLM: {e}")
             raise e 
         
-        # Initialize self.prompt using base_prompt
-        self.prompt = PromptTemplate(
+        self.prompt: PromptTemplate = PromptTemplate( # Added type hint for instance attr
             template=base_prompt,
             input_variables=extract_variable_names(base_prompt),
         )
-        
-        # Initialize self.llm using the llm_instance and the newly created self.prompt
-        self.llm = LLMChain( 
+        self.llm: LLMChain = LLMChain( # Added type hint for instance attr
             llm=llm_instance,
             prompt=self.prompt, 
         )
