@@ -77,14 +77,14 @@ class CustomLlamaCliLLM(LLM):
         
         # ---- START DEBUG PRINTS ----
         # Ensure this print statement is still present for debugging this specific issue
-        print(f"DEBUG: CustomLlamaCliLLM __init__: final_kwargs_to_pass BEFORE super = {final_kwargs_to_pass}")
+        #print(f"DEBUG: CustomLlamaCliLLM __init__: final_kwargs_to_pass BEFORE super = {final_kwargs_to_pass}")
         # ---- END DEBUG PRINTS ----
 
         super().__init__(**final_kwargs_to_pass)
         
         # ---- START DEBUG PRINTS ----
         # Ensure this print statement is still present
-        print(f"DEBUG: CustomLlamaCliLLM __init__: self.__dict__ AFTER super().__init__ = {self.__dict__}")
+        #print(f"DEBUG: CustomLlamaCliLLM __init__: self.__dict__ AFTER super().__init__ = {self.__dict__}")
         # ---- END DEBUG PRINTS ----
         # Validators for cli_path and model_path will run after Pydantic initializes fields based on final_kwargs_to_pass and class defaults.
 

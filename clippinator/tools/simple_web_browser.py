@@ -19,7 +19,7 @@ class SimpleWebBrowserTool:
             user_agent: The User-Agent string to use for HTTP requests.
         """
         self.user_agent = user_agent
-        print(f"[INFO] SimpleWebBrowserTool initialized with User-Agent: {self.user_agent}")
+        #print(f"[INFO] SimpleWebBrowserTool initialized with User-Agent: {self.user_agent}")
 
     def _fetch_and_parse(self, current_url: str) -> Tuple[str, List[str]]:
         """
@@ -33,7 +33,7 @@ class SimpleWebBrowserTool:
                 - The extracted visible text from the page.
                 - A list of unique, absolute HTTP/HTTPS URLs found on the page.
         """
-        print(f"[INFO] Fetching URL: {current_url}")
+        pprint(f"[INFO] Fetching URL: {current_url}")
         try:
             response = requests.get(current_url, headers={'User-Agent': self.user_agent}, timeout=10)
             response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
