@@ -58,10 +58,10 @@ class Taskmaster:
             
         try:
             self.llm = CustomLlamaCliLLM(
-                cli_path=project.config.get('cli_path'),
-                model_path=project.config.get('model_path'),
-                n_ctx=project.config.get('n_ctx', 2048),
-                n_threads=project.config.get('n_threads', 4)
+                cli_path=self.project.config.get('cli_path', '/default/path/to/llama-cli'),
+                model_path=self.project.config.get('model_path', '/default/path/to/model.gguf'),
+                n_ctx=self.project.config.get('n_ctx', 2048),
+                n_threads=self.project.config.get('n_threads', 4)
             )
         except ValueError as e:
             logger.error(f"LLM initialization failed: {e}")
