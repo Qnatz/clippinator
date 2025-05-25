@@ -153,7 +153,7 @@ class CustomLlamaCliLLM(LLM):
             cmd,
             capture_output=True,
             text=True,
-            timeout=kwargs.get('timeout', 60)
+            timeout=kwargs.get('timeout', 180)
         )
         if result.stderr:
             logger.debug(f"llama-cli stderr: {result.stderr.strip()}")

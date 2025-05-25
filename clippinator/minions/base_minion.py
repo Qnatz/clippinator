@@ -10,6 +10,7 @@ from pydantic.v1 import Field
 import langchain.schema
 from langchain.chains.llm import LLMChain
 from langchain_core.prompts import PromptTemplate
+from langchain_core.exceptions import OutputParserException
 from langchain.agents import (
     Tool,
     AgentExecutor,
@@ -25,6 +26,34 @@ from .prompts import format_description
 from ..tools.utils import trim_extra, ask_for_feedback
 
 logger = logging.getLogger(__name__)
+
+def custom_handle_parsing_errors(error: OutputParserException) -> str:
+    """Custom handler for Langchain OutputParserExceptions."""
+    error_message = str(error)
+    # older versions of langchain have llm_output, newer have observation
+    llm_output = getattr(error, 'llm_output', getattr(error, 'observation', 'No output available'))
+    
+    logger.error(f"Output parsing error: {error_message}")
+    logger.error(f"Faulty LLM output: {llm_output}")
+
+    # Ensure llm_output is a string and truncate if too long
+    if not isinstance(llm_output, str):
+        llm_output = str(llm_output)
+    if len(llm_output) > 1000: # Truncate for prompt
+        llm_output = llm_output[:1000] + "..."
+
+    return (
+        "Your previous response was not formatted correctly.\n"
+        f"Error: {error_message}\n"
+        f"Faulty Output: {llm_output}\n"
+        "You MUST use the following format:\n"
+        "Thought: Your reasoning and thought process.\n"
+        "Action: The action to take.\n"
+        "Action Input: The input to the action.\n"
+        "Observation: The result of the action.\n"
+        "If you are stuck or unsure what to do, try using a general-purpose tool like 'Human' or a specific 'ErrorRecoveryTool' if available.\n"
+        "Ensure 'Action:' and 'Action Input:' are present and correctly formatted.\n"
+    )
 
 long_warning = (
     "WARNING: You have been working for a very long time. Please, finish ASAP. "
@@ -235,7 +264,7 @@ class BaseMinion:
             available_tools,
             max_iterations: int = 50,
             allow_feedback: bool = False,
-            max_context_length: int = 5,
+            max_context_length: int = 10,
             keep_n_last_thoughts: int = 2
     ) -> None:
         try:
@@ -268,7 +297,7 @@ class BaseMinion:
             agent=agent,
             tools=available_tools,
             verbose=True,
-            handle_parsing_errors=True, 
+            handle_parsing_errors=custom_handle_parsing_errors, 
             max_iterations=10,
             early_stopping_method="generate", 
             return_intermediate_steps=True    
