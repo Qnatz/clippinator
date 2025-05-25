@@ -16,7 +16,7 @@ from clippinator.tools.subagents import Subagent
 from clippinator.tools.tool import WarningTool
 from .base_minion import (
     CustomPromptTemplate,
-    extract_variable_names,
+    extract_variable_names, # We will still keep this but won't use it for explicit input variables
     BasicLLM,
 )
 from .executioner import Executioner, get_specialized_executioners
@@ -67,8 +67,8 @@ class Taskmaster:
             logger.error(f"LLM initialization failed: {e}")
             raise RuntimeError("Failed to initialize LLM backend") from e
 
-        tools = get_tools(project)
-        tools.append(SelfCall(project).get_tool(try_structured=False))
+        self.tools = get_tools(project) # Store tools as an instance variable
+        self.tools.append(SelfCall(project).get_tool(try_structured=False))
 
         agent_tool_names = [
             'DeclareArchitecture', 'ReadFile', 'WriteFile', 'Bash',
@@ -79,37 +79,56 @@ class Taskmaster:
         if not inner_taskmaster:
             agent_tool_names.append('SelfCall')
 
-        tools.extend([
+        self.tools.extend([ # Extend the instance variable
             Subagent(
                 project, self.specialized_executioners, self.default_executioner
             ).get_tool(),
             WarningTool().get_tool()
         ])
 
-        _input_vars = extract_variable_names(taskmaster_prompt, interaction_enabled=True)
-
+        # Define explicit input variables for the prompt template
+        # Ensure these cover all keys expected by your prompt's template string
+        input_vars = [
+            "objective", # This will be mapped to "input" for the agent
+            "project_name",
+            "project_summary", 
+            "architecture",
+            "history",
+            "tools",         # Used by the prompt to list available tools
+            "tool_names",    # Used by the prompt to list tool names
+            "agent_scratchpad", # Crucial for ReAct agent's internal state
+            "input"          # The primary input for the agent's reasoning
+        ]
+        
+        # We need to ensure that 'base_prompt' is available, it was 'taskmaster_prompt' before.
+        # Assuming `taskmaster_prompt` is your `base_prompt` for the agent.
         self.prompt = prompt or CustomPromptTemplate(
-            template=taskmaster_prompt,
-            tools=tools,
-            input_variables=_input_vars,
+            template=taskmaster_prompt, # Changed from base_prompt to taskmaster_prompt
+            tools=self.tools, # Use the instance variable
+            input_variables=input_vars,  # Use explicit list
             agent_toolnames=agent_tool_names,
             my_summarize_agent=BasicLLM(
                 base_prompt=summarize_prompt,
-                llm=self.llm
+                #llm=self.llm # Corrected: Pass the LLM instance
             ),
             project=project,
+            # Additional parameters like 'keep_n_last_thoughts', 'max_context_length' 
+            # if they were previously implicitly set or needed.
+            # You might need to adjust CustomPromptTemplate's __init__ to handle these.
+            keep_n_last_thoughts=project.config.get('keep_n_last_thoughts', 2), # Example
+            max_context_length=project.config.get('max_context_length', 10) # Example
         )
         self.prompt.hook = lambda _: self.save_to_file()
 
         agent = create_react_agent(
             llm=self.llm,
-            tools=tools,
+            tools=self.tools, # Use the instance variable
             prompt=self.prompt
         )
 
         self.agent_executor = DebuggingAgentExecutor(
             agent=agent,
-            tools=tools,
+            tools=self.tools, # Use the instance variable
             verbose=True,
             handle_parsing_errors=True,
             max_iterations=project.config.get('max_iterations', 50),
@@ -118,28 +137,40 @@ class Taskmaster:
         )
 
     def run(self, inputs: dict) -> dict:
-        processed_inputs = inputs.copy()
-
-        # Handle objective/input key conversion
-        if 'objective' in processed_inputs:
-            processed_inputs['input'] = processed_inputs.pop('objective')
+        # Merge static project data with dynamic agent requirements
+        full_inputs = {
+            **inputs, # Start with existing inputs (e.g., from project.prompt_fields())
+            "tools": "\n".join([f"{t.name}: {t.description}" for t in self.tools]),
+            "tool_names": [t.name for t in self.tools],
+            # Initialize scratchpad. This will be updated by the agent's run cycle.
+            # LangChain's ReAct agent internally manages the scratchpad,
+            # but providing an initial empty one or ensuring the prompt can handle
+            # its absence in the first call is good practice.
+            "agent_scratchpad": "", 
+            "input": inputs.get("objective", "")  # Map objective to input
+        }
+        
+        # Ensure all required prompt input_variables are present in full_inputs
+        # If any are missing from `inputs`, provide default empty strings
+        for var in self.prompt.input_variables:
+            if var not in full_inputs:
+                full_inputs[var] = "" # Provide a default empty string for missing variables
+                logger.warning(f"Missing expected input variable '{var}'. Setting to empty string.")
 
         try:
-            # Format inputs with proper scratchpad
-            formatted_inputs = self.prompt.format(
-                **processed_inputs,
-                agent_scratchpad=self.prompt.format_scratchpad(
-                    self.prompt.intermediate_steps
-                )
-            )
-            result = self.agent_executor.invoke(formatted_inputs)
+            # The agent_executor.invoke method already handles the prompt formatting
+            # internally using its agent's prompt. We just need to pass the
+            # dictionary of inputs it expects.
+            result = self.agent_executor.invoke(full_inputs)
             self.project.update_state(result.get('output', ''))
             return result
         except KeyboardInterrupt:
             feedback = ask_for_feedback(lambda: self.project.menu(self.prompt))
             if feedback:
-                self.prompt.intermediate_steps.append(feedback)
-            return self.run(processed_inputs)
+                # Append feedback to intermediate_steps, which will then be
+                # picked up by the next call's agent_scratchpad formatting.
+                self.prompt.intermediate_steps.append({"type": "human_feedback", "value": feedback})
+            return self.run(inputs) # Use original inputs for re-run
 
     def save_to_file(self, path: str = ""):
         if not os.path.exists(self.project.path):
@@ -204,3 +235,4 @@ class SelfCall(SimpleTool):
 
     def func(self, args: str) -> str:
         return self.structured_func(args.strip())
+

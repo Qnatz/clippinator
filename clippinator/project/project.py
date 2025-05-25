@@ -19,6 +19,12 @@ class Project:
     ci_commands: Dict[str, str] = field(default_factory=dict)
     memories: List[str] = field(default_factory=list)
 
+    def get_history(self) -> str:
+        """Format project memories into a historical context string"""
+        if not self.memories:
+            return "No project history yet"
+        return "\n".join([f"- {memory}" for memory in self.memories])
+
     @property
     def name(self) -> str:
         return os.path.basename(self.path)
@@ -116,7 +122,20 @@ class Project:
             top_level=True
         )
         return self.summary_cache
+    
+    def get_architecture_example(self) -> str:
+        from clippinator.tools.architectural import templates
+        return templates.get(
+            self.template, {}
+        ).get(
+            'architecture', 
+            templates['General']['architecture']
+        )
 
+    def update_state(self, new_state):
+           """Update the project's state with new data."""
+           self.state = new_state  # Replace or merge based on your needs
+           
     def menu(self, prompt=None) -> None:
         from clippinator.tools.utils import select, get_input_from_editor
         
@@ -126,37 +145,44 @@ class Project:
             
         res = select(options, "Project Menu")
         
-        if res == 1:
+        # Handle cancellation case
+        if res < 0:
+            return
+        
+        # Use 0-based indexing for options
+        if res == 0:  # Continue
+            return
+        elif res == 1:  # Architecture
             self.architecture = get_input_from_editor(self.architecture)
-        elif res == 2:
+        elif res == 2:  # Objective
             self.objective = get_input_from_editor(self.objective)
-        elif res == 3:
+        elif res == 3:  # Memories
             self.memories = get_input_from_editor("\n".join(self.memories)).splitlines()
-        elif res == 4:
+        elif res == 4:  # CI
             ci_commands = get_input_from_editor("\n".join(
                 [f"{k}: `{v}`" for k, v in self.ci_commands.items()]
             )).splitlines()
-            self.ci_commands = {
-                line.split(':')[0].strip(): line.split(':')[1].strip().strip('`')
-                for line in ci_commands
-            }
-        elif res == 5 and prompt is not None:
+            self.ci_commands = {}
+            for line in ci_commands:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    self.ci_commands[key.strip()] = value.strip().strip('`')
+        elif res == 5 and prompt is not None:  # Edit action summary
             prompt.last_summary = get_input_from_editor(prompt.last_summary)
-
+    
     def prompt_fields(self) -> Dict[str, str]:
-        from clippinator.tools.architectural import templates
-
         return {
             "objective": self.objective,
-            "state": self.state,
-            "architecture": self.architecture,
             "project_name": self.name,
             "project_summary": self.get_project_summary(),
-            "memories": '  - ' + "\n  - ".join(self.memories),
-            "architecture_example": templates.get(
-                self.template, {}
-            ).get(
-                'architecture', 
-                templates['General']['architecture']
-            ),
+            "architecture": self.architecture,
+            "history": self.get_history(),
+            # Ensure we include any other variables used in the template
+            "memories": "\n".join([f"- {m}" for m in self.memories]) if self.memories else "None",
+            "architecture_example": self.get_architecture_example(),
+            # "state" is still a field in Project, but if it's not explicitly used
+            # as an input_variable in CustomPromptTemplate, it doesn't strictly need
+            # to be here for the prompt formatting, but it doesn't hurt.
+             "state": self.state, 
         }
+
