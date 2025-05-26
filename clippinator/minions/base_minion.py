@@ -61,6 +61,27 @@ long_warning = (
 )
 
 
+def run_with_retries(agent_executor, inputs, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            result = agent_executor.invoke(inputs)
+            return result
+        except Exception as e:
+            if "Invalid Format" in str(e):
+                print(f"Format error on attempt {attempt + 1}: {e}")
+                # Add format reminder to inputs
+                inputs['agent_scratchpad'] = inputs.get('agent_scratchpad', '') + "\n\nREMINDER: You MUST follow the Thought -> Action -> Action Input format. Every Thought needs an Action!"
+            elif "timeout" in str(e).lower():
+                print(f"Timeout on attempt {attempt + 1}")
+                # Reduce complexity or split task (Note: actual task splitting is complex and might be out of scope for this function, print is a placeholder)
+            else:
+                print(f"Unexpected error: {e}")
+            
+            if attempt == max_retries - 1:
+                raise
+    return None # Should not be reached if max_retries > 0 due to raise
+
+
 def remove_surrogates(text):
     return "".join(c for c in text if not ('\ud800' <= c <= '\udfff'))
 
@@ -151,8 +172,8 @@ class CustomPromptTemplate(StringPromptTemplate):
         tools: List[Tool],
         agent_toolnames: List[str],
         input_variables: List[str],
-        max_context_length: int = 5,
-        keep_n_last_thoughts: int = 2,
+        max_context_length: int = 15,
+        keep_n_last_thoughts: int = 10,
         project: Optional['Project'] = None,
         my_summarize_agent: Optional['BasicLLM'] = None,
         hook: Optional[Callable[['CustomPromptTemplate'], None]] = None,
@@ -308,7 +329,7 @@ class BaseMinion:
         inputs["feedback"] = inputs.get("feedback", "")
         inputs["format_description"] = format_description
         
-        return self.agent_executor.invoke(inputs)
+        return run_with_retries(self.agent_executor, inputs)
 
 
 @dataclass

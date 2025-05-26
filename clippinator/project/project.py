@@ -133,8 +133,18 @@ class Project:
         )
 
     def update_state(self, new_state):
-           """Update the project's state with new data."""
-           self.state = new_state  # Replace or merge based on your needs
+        """Update the project state with new information"""
+        if isinstance(new_state, dict):
+            # Extract relevant information from result
+            if 'state' in new_state:
+                self.state = new_state['state']
+            if 'architecture' in new_state:
+                self.architecture = new_state['architecture']
+            if 'memories' in new_state:
+                self.memories.extend(new_state.get('memories', []))
+        else:
+            # Handle string state updates
+            self.state = str(new_state)
            
     def menu(self, prompt=None) -> None:
         from clippinator.tools.utils import select, get_input_from_editor

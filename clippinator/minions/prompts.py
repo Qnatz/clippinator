@@ -14,47 +14,40 @@ Note that the architecture may be significantly different from the current proje
 """
 
 format_description = """
-You have access to the following tools:
-{tools}
-When possible, use your own knowledge. When there's something important, use the Remember tool.
+You MUST follow this exact format for every response:
 
-You will use the following format to accomplish your tasks (note that you should respond with as much as you can generate): 
-Thought: the thought you have about what to do next or in general.
-Action: the action you take. It's one of {tool_names}. You have to write "Action: <tool name>".
-Action Input: the input to the action.
-Observation: the result of the action.
-Final Answer: The final answer to the original input question. Write what you did, be reasonably detailed.
+Thought: Your reasoning about what to do next
+Action: [EXACTLY ONE OF: {tool_names}]
+Action Input: The input for the action
+Observation: The result will appear here automatically
+[Continue with more Thought/Action/Action Input/Observation cycles if needed]
+Final Answer: Your conclusion about what you accomplished
 
-"Observation:" ALWAYS comes after "Action Input:" - it's the result of any taken action. Do not use to describe the result of your thought.
-"Observation:" comes after "Action Input:" even if there's a Final Answer after that.
-"Observation:" never comes just after "Thought:".
-"Action Input:" can come only after "Action:" - and always does.
-You need to have a "Final Answer:", even if the result is trivial. Never stop right after finishing your thought. You should proceed with your next thought or action. 
-Everything you do should be one of: Action, Action Input, Observation, Final Answer. You have to include the exact words "Action:", "Action Input:", "Observation:", "Final Answer:".
-Sometimes you will see a "System note". It isn't produced by you, it is a note from the system. You should pay attention to it and continue your work. 
+CRITICAL RULES:
+- Every Thought MUST be followed by an Action
+- Every Action MUST be followed by Action Input
+- Never write "Observation:" yourself - it appears automatically
+- If you're done, write "Final Answer:" with your summary
+- Do NOT stop after just a Thought without taking an Action
 """
 
-execution_prompt = (
-    common_part  # common_part contains format_description (updated for ReAct) & tool info
-    + """
-You are executing a specific task.
-Your assigned task is: **{input}**. 
-This task is part of a larger milestone: **{milestone}**.
+execution_prompt = """
+You are an AI developer working on: {objective}
 
-Follow these instructions from the overall plan, focusing only on your assigned task:
-- If you fail to execute the task or face significant obstacles, state this clearly in your Final Answer.
-- If there is a small error when taking an action, do not give up. Try to recover or use a different approach.
-- Briefly check for success at the end of your actions.
-- Usually, you should implement the specified architecture or task details. Avoid leaving placeholders like "pass" and aim for complete code or actions from the first try.
-- Use WriteFile (and not patch) when you are writing to a new or very small file.
-- Avoid reading entire large files; specify line ranges if possible or use patch for modifications unless writing from scratch.
-- If you are writing to a new file, you must use WriteFile. Base your code on the architecture and task description.
+Current task: {input}
 
-Begin your execution!
+Available tools: {tool_names}
 
+REQUIRED FORMAT (follow exactly):
+Thought: What should I do?
+Action: [tool name]
+Action Input: [tool input]
+Observation: [automatic result]
+Final Answer: What I accomplished
+
+Begin:
 {agent_scratchpad}
 """
-)
 
 get_specialized_prompt = lambda special_part: (
         """You are a world-class programmer. Your goal is to execute the task in a project."""
