@@ -3,17 +3,18 @@ from __future__ import annotations
 import os
 import re
 import logging # Added import
-from dataclasses import dataclass
-from typing import List, Union, Callable, Any
+from dataclasses import dataclass, field # Keep field for BasicLLM
+from typing import List, Union, Callable, Any, Optional # Added Optional
+from pydantic.v1 import Field # Added Pydantic v1 Field
 
 import langchain.schema
-from langchain.chains import LLMChain # Updated import
-from langchain.prompts import PromptTemplate # Updated import
+from langchain.chains.llm import LLMChain # Updated import
+from langchain_core.prompts import PromptTemplate # Updated import
 from langchain.agents import (
     Tool,
     AgentExecutor,
-    LLMSingleActionAgent,
-    AgentOutputParser,
+    create_react_agent, # Ensured this is present
+    # AgentOutputParser, # Removed as CustomOutputParser is being removed
 )
 # Removed OpenAIFunctionsAgent, ChatOpenAI, ChatAnthropic
 # from langchain_community.llms import LlamaCpp # Removed LlamaCpp import
@@ -22,6 +23,7 @@ from langchain.prompts import StringPromptTemplate
 from langchain.schema import AgentAction, AgentFinish
 
 from clippinator.tools.tool import WarningTool
+from clippinator.project.project import Project # Added Project import
 from .prompts import format_description
 from ..tools.utils import trim_extra, ask_for_feedback
 
@@ -37,84 +39,7 @@ def remove_surrogates(text):
     return "".join(c for c in text if not ('\ud800' <= c <= '\udfff'))
 
 
-class CustomOutputParser(AgentOutputParser):
-    def parse(self, llm_output: str) -> Union[AgentAction, AgentFinish]:
-        actions = [
-            line.split(":", 1)[1].strip()
-            for line in llm_output.splitlines()
-            if line.startswith("Action:")
-        ]
-        # Check if agent should finish"
-        if "Final Result:" in llm_output:
-            if "Action" in llm_output:
-                return AgentAction(
-                    tool="WarnAgent",
-                    tool_input=f"ERROR: Don't write 'Action' together with the Final Result. "
-                               f"You need to REDO your action(s) ({', '.join(actions)}), "
-                               f"receive the 'AResult' and only then write your 'Final Result'",
-                    log=llm_output,
-                )
-            return AgentFinish(
-                # Return values is generally always a dictionary with a single `output` key
-                # It is not recommended to try anything else at the moment :)
-                return_values={"output": llm_output.split("Final Result:")[-1].strip()},
-                log=llm_output,
-            )
-        # Parse out the action and action input
-        regex = r"Action\s*\d*\s*:(.*?)\nAction\s*\d*\s*Input\s*\d*\s*:[\s]*(.*)"
-        match = re.search(regex, llm_output, re.DOTALL)
-        if not match and llm_output.strip().split("\n")[-1].strip().startswith(
-                "Thought:"
-        ):
-            return AgentAction(
-                tool="WarnAgent",
-                tool_input="don't stop after 'Thought:', continue with the next thought or action",
-                log=llm_output,
-            )
-
-        if not match:
-            if "Action:" in llm_output and "\nAction Input:" not in llm_output:
-                return AgentAction(
-                    tool="WarnAgent",
-                    tool_input="No Action Input specified.",
-                    log=llm_output,
-                )
-            else:
-                return AgentAction(
-                    tool="WarnAgent",
-                    tool_input="Continue with your next thought or action. Do not repeat yourself. "
-                               "When you're done, write 'Final Result:'. \n",
-                    log=llm_output,
-                )
-
-        if llm_output.count("\nAction Input:") > 1:
-            return AgentAction(
-                tool="WarnAgent",
-                tool_input="ERROR: Write 'AResult: ' after each action. Execute ALL the past actions "
-                           f"without AResult again ({', '.join(actions)}), one-by-one. They weren't completed.",
-                log=llm_output,
-            )
-
-        action = match.group(1).strip().strip("`").strip('"').strip("'").strip()
-        action_input = match.group(2)
-        if "\nThought: " in action_input or "\nAction: " in action_input:
-            return AgentAction(
-                tool="WarnAgent",
-                tool_input="Error: Write 'AResult: ' after each action. "
-                           f"Execute all the actions without AResult again ({', '.join(actions)}).",
-                log=llm_output,
-            )
-        if "Subagent" in action:
-            action_input += " " + action.split("Subagent")[1].strip()
-            action = "Subagent"
-
-        # Return the action and action inputx
-        return AgentAction(
-            tool=action,
-            tool_input=action_input.strip(" ").split("\nThought: ")[0],
-            log=llm_output,
-        )
-
+# CustomOutputParser class definition removed.
 
 def remove_project_summaries(text: str) -> str:
     """
@@ -129,40 +54,79 @@ def remove_project_summaries(text: str) -> str:
     return text
 
 
-def extract_variable_names(prompt: str, interaction_enabled: bool = False):
+def extract_variable_names(prompt: str, interaction_enabled: bool = False) -> List[str]:
     variable_pattern = r"\{(\w+)\}"
-    variable_names = re.findall(variable_pattern, prompt)
+    # Find variables present in the prompt string itself (e.g., {input}, {objective}, etc.)
+    variables_from_prompt = re.findall(variable_pattern, prompt)
+    
     if interaction_enabled:
-        for name in ["tools", "tool_names", "agent_scratchpad"]:
-            if name in variable_names:
-                variable_names.remove(name)
-        variable_names.append("intermediate_steps")
-    return variable_names
+        # For ReAct agents (interaction_enabled=True), certain variables are mandatory
+        # for the prompt object, even if not all are directly in the template string
+        # (as create_react_agent checks prompt.input_variables).
+        # These are typically 'input', 'tools', 'tool_names', and 'agent_scratchpad'.
+        # 'tools', 'tool_names', 'agent_scratchpad' are usually generated by the formatting logic.
+        # 'input' should be the main query.
+        
+        # Start with variables found in the prompt string
+        final_variables = set(variables_from_prompt)
+        
+        # Ensure ReAct-specific variables are declared
+        final_variables.add("tools")
+        final_variables.add("tool_names")
+        final_variables.add("agent_scratchpad")
+        
+        # 'input' is also crucial for most Langchain agent prompts.
+        # If not found in the prompt string directly (e.g. if the prompt uses {task} or {objective}
+        # which are later mapped to 'input' by the calling code), ensure 'input' is listed.
+        # The prompt templates in prompts.py were updated to use {input} directly, so this should be fine.
+        if "input" not in final_variables:
+             # This case might indicate an issue if {input} isn't in the prompt template itself.
+             # For now, let's assume {input} is correctly in the template string.
+             pass
+
+        # Remove 'intermediate_steps' if it was somehow picked up or added previously.
+        # This variable is processed into 'agent_scratchpad' by CustomPromptTemplate.format()
+        # and should not be an input_variable of the prompt passed to the agent.
+        if "intermediate_steps" in final_variables:
+            final_variables.remove("intermediate_steps")
+            
+        return list(final_variables)
+    else:
+        # Original behavior for non-interactive prompts (e.g., BasicLLM prompts)
+        return variables_from_prompt
 
 # Removed get_model function
 
 @dataclass
 class BasicLLM:
-    prompt: PromptTemplate
-    llm: LLMChain
+    base_prompt: str  # Field to be provided in __init__
+    
+    # Fields to be initialized in __post_init__
+    prompt: PromptTemplate = field(init=False)
+    llm: LLMChain = field(init=False)
 
-    def __init__(self, base_prompt: str) -> None: # MODIFIED SIGNATURE
+    def __post_init__(self):
         try:
-            llm = CustomLlamaCliLLM() # NEW INSTANTIATION
+            llm_instance = CustomLlamaCliLLM() 
         except ValueError as e:
             logger.error(f"Failed to initialize CustomLlamaCliLLM in BasicLLM: {e}")
-            raise e # Re-raise the exception after logging
-        self.llm = LLMChain( # REMAINS THE SAME
-            llm=llm,
-            prompt=PromptTemplate(
-                template=base_prompt,
-                input_variables=extract_variable_names(base_prompt),
-            ),
+            raise e 
+        
+        self.prompt = PromptTemplate(
+            template=self.base_prompt, # Use self.base_prompt here
+            input_variables=extract_variable_names(self.base_prompt),
+        )
+        self.llm = LLMChain( 
+            llm=llm_instance,
+            prompt=self.prompt, 
         )
 
-    def run(self, **kwargs):
-        kwargs["feedback"] = kwargs.get("feedback", "")
-        return self.llm.predict(**kwargs)
+    def invoke(self, inputs: dict) -> str:
+        inputs["feedback"] = inputs.get("feedback", "") # Ensure 'feedback' is handled if necessary
+        # self.llm is an LLMChain
+        response = self.llm.invoke(inputs)
+        # Extract text, default to empty string if 'text' key not found or response is not dict
+        return response.get('text', '') if isinstance(response, dict) else str(response)
 
 
 class CustomPromptTemplate(StringPromptTemplate):
@@ -170,7 +134,12 @@ class CustomPromptTemplate(StringPromptTemplate):
     # The list of tools available
     tools: List[Tool]
     agent_toolnames: List[str]
-    # max_context_length: int = 5 # Now an instance variable
+    max_context_length: int
+    keep_n_last_thoughts: int
+    project: Optional['Project'] 
+    my_summarize_agent: Optional['BasicLLM'] 
+    hook: Optional[Callable[['CustomPromptTemplate'], None]]
+    # current_context_length: int = 5 # Now an instance variable
     # keep_n_last_thoughts: int = 2 # Now an instance variable
     current_context_length: int = 0
     model_steps_processed: int = 0
@@ -178,7 +147,7 @@ class CustomPromptTemplate(StringPromptTemplate):
     # my_summarize_agent: Any = None # To be set as instance attribute in __init__
     last_summary: str = ""
     # project: Any | None = None # To be set as instance attribute in __init__
-    intermediate_steps: list = [] # Will be initialized in __init__
+    intermediate_steps: list = Field(default_factory=list) # Changed to pydantic.v1.Field
     # hook: Optional[Callable[[CustomPromptTemplate], None]] = None # To be set as instance attribute in __init__
 
     # Pydantic fields: template, tools, agent_toolnames (and input_variables from parent)
@@ -193,70 +162,46 @@ class CustomPromptTemplate(StringPromptTemplate):
         input_variables: List[str],
         max_context_length: int = 5,
         keep_n_last_thoughts: int = 2,
-        project: Any | None = None,
-        my_summarize_agent: Any = None,
-        hook: Optional[Callable[[CustomPromptTemplate], None]] = None,
-        **kwargs: Any  # To catch any other potential kwargs
+        project: Optional['Project'] = None,
+        my_summarize_agent: Optional['BasicLLM'] = None,
+        hook: Optional[Callable[['CustomPromptTemplate'], None]] = None,
+        **kwargs: Any
     ):
-        # Set custom instance attributes first. These are specific to CustomPromptTemplate's extended behavior.
-        self.max_context_length = max_context_length
-        self.keep_n_last_thoughts = keep_n_last_thoughts
-        self.project = project
-        self.my_summarize_agent = my_summarize_agent
-        self.hook = hook
-        
-        # Prepare kwargs for super().__init__(). This should only include arguments
-        # that are Pydantic fields of CustomPromptTemplate itself (template, tools, agent_toolnames)
-        # or fields of its parent StringPromptTemplate (input_variables), plus any
-        # other valid Pydantic/BaseModel keyword arguments (like 'callbacks', 'metadata' if used).
         super_kwargs = {
             "input_variables": input_variables,
             "template": template,
             "tools": tools,
             "agent_toolnames": agent_toolnames,
+            "max_context_length": max_context_length,
+            "keep_n_last_thoughts": keep_n_last_thoughts,
+            "project": project,
+            "my_summarize_agent": my_summarize_agent,
+            "hook": hook,
         }
-
-        # Defensive: Ensure that custom parameters (already assigned to self)
-        # are not accidentally passed again in the **kwargs catch-all to super().
-        # This is to prevent them from causing issues if StringPromptTemplate
-        # has 'extra = forbid' and doesn't recognize them.
-        # (These should have been captured by the named parameters already, so this is for safety).
-        if "max_context_length" in kwargs:
-            kwargs.pop("max_context_length")
-        if "keep_n_last_thoughts" in kwargs:
-            kwargs.pop("keep_n_last_thoughts")
-        if "project" in kwargs:
-            kwargs.pop("project")
-        if "my_summarize_agent" in kwargs:
-            kwargs.pop("my_summarize_agent")
-        if "hook" in kwargs:
-            kwargs.pop("hook")
         
-        # Add any remaining legitimate kwargs that might be for Pydantic BaseModel features
-        # or specific StringPromptTemplate features (e.g., 'validate_template').
-        super_kwargs.update(kwargs) 
+        for key in ["max_context_length", "keep_n_last_thoughts", "project", "my_summarize_agent", "hook"]:
+            kwargs.pop(key, None) 
         
+        super_kwargs.update(kwargs)
         super().__init__(**super_kwargs)
         
-        # Initialize mutable state attributes
-        self.intermediate_steps = [] 
-        # Class defaults for current_context_length etc. are used by Pydantic if not in super_kwargs.
+        # self.intermediate_steps: list = [] # Removed, handled by default_factory
 
     @property
     def _prompt_type(self) -> str:
         return "taskmaster"
 
-    def thought_log(self, thoughts: list[(AgentAction, str)]) -> str:
+    def thought_log(self, thoughts: list[tuple[AgentAction, str]]) -> str:
         result = ""
-        for i, (action, aresult) in enumerate(thoughts):
-            if self.my_summarize_agent:
-                aresult = trim_extra(aresult, 1300 if i != len(thoughts) - 1 else 1750)
-            if action.tool == "WarnAgent":
-                result += action.log + f"\nSystem note: {aresult}\n"
-            elif action.tool == "AgentFeedback":
-                result += action.log + aresult + "\n"
-            else:
-                result += action.log + f"\nAResult: {aresult}\n"
+        for action, observation in thoughts:
+            # action.log is expected to contain the multi-line string:
+            # Thought: ...
+            # Action: ...
+            # Action Input: ...
+            result += action.log 
+            result += f"""
+Observation: {str(observation)}
+"""
         return result
 
     def format(self, **kwargs) -> str:
@@ -278,14 +223,15 @@ class CustomPromptTemplate(StringPromptTemplate):
                     and self.my_summarize_agent
             ):
                 print(f"[INFO] Summarization triggered. Last summary length: {len(self.last_summary)}, current_context_length: {self.current_context_length}, max_context_length: {self.max_context_length}")
-                self.last_summary = self.my_summarize_agent.run(
-                    summary=self.last_summary,
-                    thought_process=self.thought_log(
+                summarizer_input = {
+                    "summary": self.last_summary,
+                    "thought_process": self.thought_log(
                         intermediate_steps[
                         -self.current_context_length: -self.keep_n_last_thoughts
                         ]
-                    ),
-                )
+                    )
+                }
+                self.last_summary = self.my_summarize_agent.invoke(summarizer_input)
                 self.current_context_length = self.keep_n_last_thoughts
 
             if self.my_summarize_agent:
@@ -296,11 +242,21 @@ class CustomPromptTemplate(StringPromptTemplate):
             else:
                 kwargs["agent_scratchpad"] = ""
 
-            kwargs["agent_scratchpad"] += "Here go your thoughts and actions:\n"
+            kwargs["agent_scratchpad"] += "Here go your thoughts and actions:\n" # This part is fine
 
-            kwargs["agent_scratchpad"] += self.thought_log(
-                intermediate_steps[-self.current_context_length:]
-            )
+            # The 'intermediate_steps' for the current context length are formatted using the updated thought_log.
+            current_thought_steps = intermediate_steps[-self.current_context_length:]
+            kwargs["agent_scratchpad"] += self.thought_log(current_thought_steps)
+            
+        # Ensure 'input' is present in kwargs for self.template.format, 
+        # if not already passed in from the Minion's invoke method.
+        # This is a fallback, ideally 'input' is explicitly in kwargs.
+        if 'input' not in kwargs:
+            # 'objective' or 'task' might be the original key for the main input.
+            # This depends on how BaseMinion/Taskmaster.invoke structures its 'inputs' dict.
+            # Assuming 'objective' is a possible key for the main input if 'input' is missing.
+            kwargs['input'] = kwargs.get('objective', kwargs.get('task', ''))
+
 
         kwargs["tools"] = "\n".join(
             [
@@ -315,7 +271,7 @@ class CustomPromptTemplate(StringPromptTemplate):
                 kwargs[key] = value
         # print("Prompt:\n\n" + self.template.format(**kwargs) + "\n\n\n")
         result = remove_surrogates(
-            remove_project_summaries(self.template.format(**kwargs).replace('{tools}', kwargs['tools'])))
+            remove_project_summaries(self.template.format(**kwargs))) # Removed .replace('{tools}', kwargs['tools']) as format should handle it
         result = trim_extra(result, 25000)
         if self.hook:
             self.hook(self)
@@ -343,7 +299,7 @@ class BaseMinion:
             self,
             base_prompt,
             available_tools,
-            max_iterations: int = 50,
+            max_iterations: int = 50, # This parameter is now overridden by a fixed value in AgentExecutor
             allow_feedback: bool = False,
             max_context_length: int = 5,
             keep_n_last_thoughts: int = 2
@@ -355,12 +311,12 @@ class BaseMinion:
             logger.error(f"Failed to initialize CustomLlamaCliLLM in BaseMinion: {e}")
             raise e # Re-raise the exception after logging
         agent_toolnames = [tool.name for tool in available_tools]
-        extended_tools = list(available_tools)
+        extended_tools = list(available_tools) # extended_tools is used for CustomPromptTemplate
         extended_tools.append(WarningTool().get_tool())
 
         self.prompt = CustomPromptTemplate(
             template=base_prompt,
-            tools=extended_tools,
+            tools=extended_tools, 
             input_variables=extract_variable_names(
                 base_prompt, interaction_enabled=True
             ),
@@ -369,41 +325,37 @@ class BaseMinion:
             keep_n_last_thoughts=keep_n_last_thoughts,
         )
 
-        llm_chain = LLMChain(llm=llm, prompt=self.prompt)
-        output_parser = CustomOutputParser()
-        agent = LLMSingleActionAgent(
-            llm_chain=llm_chain,
-            output_parser=output_parser,
-            stop=["AResult:"],
-            allowed_tools=[tool.name for tool in available_tools], # Original list, not extended
+        # llm_chain = LLMChain(llm=llm, prompt=self.prompt) # Removed
+        # output_parser is not directly used by create_react_agent, 
+        # but CustomOutputParser might be part of ReAct agent's internal workings if not overridden.
+        # For now, keep the variable definition if it's used elsewhere or if ReAct might use it.
+        # If it's confirmed ReAct uses its own parser exclusively and CustomOutputParser is not needed by the agent,
+        # then this line can be removed.
+        # _output_parser = CustomOutputParser() # Instantiation removed.
+
+        agent = create_react_agent(
+            llm=llm,
+            tools=available_tools, # create_react_agent uses `available_tools`
+            prompt=self.prompt
         )
 
-        self.agent_executor = AgentExecutor.from_agent_and_tools(
+        self.agent_executor = AgentExecutor(
             agent=agent,
-            tools=available_tools, # Original list
+            tools=available_tools, # AgentExecutor also uses `available_tools`
             verbose=True,
-            max_iterations=max_iterations,
+            handle_parsing_errors=True, 
+            max_iterations=10, # Updated from max_iterations variable as per instructions
+            early_stopping_method="generate", 
+            return_intermediate_steps=True    
         )
         self.allow_feedback = allow_feedback
 
-    def run(self, **kwargs):
-        kwargs["feedback"] = kwargs.get("feedback", "")
-        kwargs["format_description"] = format_description
-        if not self.allow_feedback:
-            return (
-                    self.agent_executor.run(**kwargs)
-                    or "No result. The execution was probably unsuccessful."
-            )
-        try:
-            return (
-                    self.agent_executor.run(**kwargs)
-                    or "No result. The execution was probably unsuccessful."
-            )
-        except KeyboardInterrupt:
-            feedback = ask_for_feedback()
-            if feedback:
-                self.prompt.intermediate_steps += [feedback]
-            return self.run(**kwargs)
+    def invoke(self, inputs: dict) -> dict:
+        inputs["feedback"] = inputs.get("feedback", "")
+        inputs["format_description"] = format_description # This was part of the original **kwargs
+        
+        # Simplest change for now, focusing on .invoke():
+        return self.agent_executor.invoke(inputs)
 
 # Removed BaseMinionOpenAI class
 
@@ -438,27 +390,68 @@ class FeedbackMinion:
         self.feedback_prompt = feedback_prompt
         self.check_function = check_function
 
-    def run(self, **kwargs):
-        if "feedback" in kwargs:
-            print("Rerunning a prompt with feedback:", kwargs["feedback"])
-            if len(kwargs["previous_result"]) > 500:
-                kwargs["previous_result"] = (
-                        kwargs["previous_result"][:500] + "\n...(truncated)\n"
+    def invoke(self, inputs: dict) -> dict:
+        original_inputs = inputs.copy()
+
+        if "feedback" in original_inputs and "previous_result" in original_inputs:
+            print("Rerunning a prompt with feedback:", original_inputs["feedback"])
+            if len(original_inputs["previous_result"]) > 500:
+                original_inputs["previous_result"] = (
+                        original_inputs["previous_result"][:500] + "\n...(truncated)\n"
                 )
-            kwargs["feedback"] = self.feedback_prompt.format(**kwargs)
-        res = self.underlying_minion.run(**kwargs)
+            # Ensure feedback_prompt is formatted correctly, using only keys present in original_inputs
+            # This might require careful construction of feedback_prompt string template
+            try:
+                current_feedback_text = original_inputs.get("feedback", "")
+                previous_result_text = original_inputs.get("previous_result", "")
+                # Construct a dictionary with only the keys expected by feedback_prompt
+                feedback_format_args = {
+                    "feedback": current_feedback_text,
+                    "previous_result": previous_result_text
+                }
+                # Add other relevant keys from original_inputs if feedback_prompt expects them
+                for key in original_inputs:
+                    if key not in feedback_format_args:
+                        feedback_format_args[key] = original_inputs[key]
+                
+                original_inputs["feedback"] = self.feedback_prompt.format(**feedback_format_args)
+            except KeyError as e:
+                logger.warning(f"KeyError during feedback_prompt formatting: {e}. Using simpler format for feedback string.")
+                original_inputs["feedback"] = f"Critique: {original_inputs.get('feedback', '')}\nOriginal work: {original_inputs.get('previous_result', '')}"
+
+        underlying_response = self.underlying_minion.invoke(original_inputs)
+        
+        if isinstance(underlying_response, dict):
+            res_output = underlying_response.get('output', '')
+            final_return_value = underlying_response 
+        else: 
+            res_output = str(underlying_response)
+            final_return_value = {"output": res_output} 
+        
+        check_error_msg = None
         try:
-            check_result = None # Initialize check_result to None
-            self.check_function(res)
+            self.check_function(res_output) 
         except ValueError as e:
-            check_result = " ".join(e.args)
-        if check_result: # This condition was using an undefined variable `critique`
-            kwargs["feedback"] = check_result
-            kwargs["previous_result"] = res
-            return self.run(**kwargs)
-        evaluation = self.eval_llm.predict(result=res, **kwargs)
-        if "ACCEPT" in evaluation:
-            return res
-        kwargs["feedback"] = evaluation.split("Feedback: ", 1)[-1].strip()
-        kwargs["previous_result"] = res
-        return self.run(**kwargs)
+            check_error_msg = " ".join(e.args)
+        
+        if check_error_msg: 
+            new_inputs_for_retry = original_inputs.copy()
+            new_inputs_for_retry["feedback"] = check_error_msg
+            new_inputs_for_retry["previous_result"] = res_output
+            return self.invoke(new_inputs_for_retry)
+        
+        eval_kwargs = {"result": res_output, **original_inputs}
+        # Filter eval_kwargs to only include keys expected by the eval_llm's prompt
+        expected_eval_vars = self.eval_llm.prompt.input_variables
+        filtered_eval_kwargs = {k: v for k, v in eval_kwargs.items() if k in expected_eval_vars}
+        
+        evaluation_result = self.eval_llm.invoke(filtered_eval_kwargs)
+        evaluation_text = evaluation_result.get('text', '') if isinstance(evaluation_result, dict) else str(evaluation_result)
+
+        if "ACCEPT" in evaluation_text:
+            return final_return_value
+        
+        new_inputs_for_retry_with_eval = original_inputs.copy()
+        new_inputs_for_retry_with_eval["feedback"] = evaluation_text.split("Feedback: ", 1)[-1].strip()
+        new_inputs_for_retry_with_eval["previous_result"] = res_output
+        return self.invoke(new_inputs_for_retry_with_eval)

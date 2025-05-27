@@ -19,14 +19,15 @@ class CustomLlamaCliLLM(LLM):
 
     cli_path: Optional[str] = None
     model_path: Optional[str] = None
-    n_ctx: int = 2048
+    n_ctx: int = 4096  # Updated default
     n_threads: int = 4
-    n_predict: int = 256
-    temperature: float = 0.8
-    top_k: int = 40
-    top_p: float = 0.95
-    repeat_penalty: float = 1.1
+    n_predict: int = 512  # Updated default
+    temperature: float = 0.7  # Updated default
+    top_k: int = 50  # Updated default
+    top_p: float = 0.9  # Updated default
+    repeat_penalty: float = 1.15  # Updated default
     n_gpu_layers: int = 0
+    stop_sequences: Optional[List[str]] = None # Added
     # Add any other parameters that are meant to be configurable
 
     # Pydantic v1 style root_validator to ensure essential paths are loaded from env vars
@@ -65,6 +66,10 @@ class CustomLlamaCliLLM(LLM):
             values_from_env["repeat_penalty"] = float(os.environ["LLAMA_CLI_REPEAT_PENALTY"])
         if "N_GPU_LAYERS" in os.environ: # Using N_GPU_LAYERS as per previous definition
             values_from_env["n_gpu_layers"] = int(os.environ["N_GPU_LAYERS"])
+        if "LLAMA_CLI_STOP_SEQUENCES" in os.environ: # Added for stop_sequences
+            # Assuming env var is a comma-separated string, e.g., "foo,bar"
+            values_from_env["stop_sequences"] = os.environ["LLAMA_CLI_STOP_SEQUENCES"].split(',')
+
 
         # Combine with kwargs: kwargs override environment variables.
         # Pydantic will apply class-defined defaults for any keys not present in final_kwargs_to_pass.
@@ -119,6 +124,7 @@ class CustomLlamaCliLLM(LLM):
             "top_p": self.top_p,
             "repeat_penalty": self.repeat_penalty,
             "n_gpu_layers": self.n_gpu_layers,
+            "stop_sequences": self.stop_sequences, # Added
         }
 
     def _call(
@@ -128,8 +134,16 @@ class CustomLlamaCliLLM(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
-        if stop is not None:
-            logger.warning(f"Stop sequences {stop} are not directly supported by llama-cli wrapper and will be ignored.")
+        # Prefer 'stop' kwarg if passed to _call, otherwise use instance's stop_sequences
+        current_stop_sequences = kwargs.get('stop', self.stop_sequences)
+        
+        final_prompt = prompt
+        if current_stop_sequences:
+            # Simple prompt injection for stop sequences
+            stop_instruction = f"\n\nImportant: You MUST stop generating further output when you encounter any of the following phrases: {', '.join(current_stop_sequences)}"
+            final_prompt += stop_instruction
+            # logger.info(f"Stop sequences {current_stop_sequences} provided. Appending instruction to prompt.")
+            # No longer warning about ignoring, as we are handling it via prompt injection.
 
         # Ensure cli_path and model_path are validated and available
         if not self.cli_path or not self.model_path:
@@ -139,7 +153,7 @@ class CustomLlamaCliLLM(LLM):
         command = [
             self.cli_path,
             "-m", self.model_path,
-            "-p", prompt,
+            "-p", final_prompt, # Use the potentially modified prompt
             "-c", str(self.n_ctx),
             "-t", str(self.n_threads),
             "--n-predict", str(self.n_predict),
@@ -161,8 +175,13 @@ class CustomLlamaCliLLM(LLM):
             )
             
             generated_text = process.stdout.strip()
-            if generated_text.startswith(prompt): # Basic parsing, might need refinement
-                generated_text = generated_text[len(prompt):].lstrip() 
+            # Basic parsing, might need refinement. 
+            # If prompt injection was used, the injected text might be part of the output.
+            # This logic attempts to remove the original prompt (including injected stop instructions).
+            if generated_text.startswith(final_prompt): 
+                generated_text = generated_text[len(final_prompt):].lstrip()
+            elif generated_text.startswith(prompt): # Fallback if only original prompt is found
+                 generated_text = generated_text[len(prompt):].lstrip()
             
             if process.stderr: # Log stderr even if process didn't fail
                 logger.debug(f"llama-cli stderr: {process.stderr.strip()}")
