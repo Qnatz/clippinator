@@ -3,10 +3,8 @@ import sys
 from crewai import Crew, Process
 import re # For creating the expected report filename for verification
 
-# LLM Client Imports
-from langchain_community.chat_models import ChatOllama
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI # Explicit import for clarity, even if CrewAI handles default
+# LLM Client Imports are no longer needed here for explicit instantiation.
+# CrewAI will handle LLM resolution via LiteLLM.
 
 # Adjust sys.path for imports
 current_script_path = os.path.abspath(__file__)
@@ -37,65 +35,51 @@ except ImportError as e:
 def run_development_crew():
     print("Initializing development crew...")
 
-    # --- LLM Configuration ---
-    # Choose your LLM provider here by uncommenting one section and commenting others.
-    # Ensure you have the necessary environment variables set for your chosen LLM.
+    # --- Simplified LLM Configuration using CrewAI's LiteLLM integration ---
+    # Set the LLM_CHOICE environment variable to "ollama", "gemini", or "openai".
+    # Default is "openai" if LLM_CHOICE is not set.
+    llm_choice = os.getenv("LLM_CHOICE", "openai").lower()
+    llm_to_use = None # This will be the model string or None
 
-    llm_choice = "openai" # Options: "openai", "ollama", "gemini" 
-    # To use a specific LLM, change "openai" to "ollama" or "gemini".
-    # Ensure the chosen LLM is configured (e.g., Ollama server running, API keys set).
-    llm_to_use = None
-
-    print(f"Attempting to configure LLM: {llm_choice}")
+    print(f"LLM choice: '{llm_choice}' (set via LLM_CHOICE environment variable or defaulted).")
 
     if llm_choice == "ollama":
-        # Ensure Ollama server is running.
-        # Replace "deepseek-coder" with the actual model name if different (e.g., "deepseek-coder:6.7b")
-        # You might need to set OLLAMA_BASE_URL environment variable if not default.
-        try:
-            # Check for OLLAMA_MODEL environment variable, otherwise default to deepseek-coder
-            ollama_model = os.getenv("OLLAMA_MODEL", "deepseek-coder")
-            llm_to_use = ChatOllama(
-                model=ollama_model, 
-                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-            )
-            print(f"Using Ollama with model '{ollama_model}'. Ensure Ollama is running and the model is pulled/served.")
-        except Exception as e:
-            print(f"Error initializing Ollama: {e}. Proceeding without specific LLM (will use CrewAI default or fail).")
-            llm_to_use = None
-
+        # User needs to ensure OLLAMA_MODEL is set to the model they serve (e.g., "deepseek-coder:6.7b")
+        # and OLLAMA_BASE_URL if not http://localhost:11434
+        ollama_model = os.getenv("OLLAMA_MODEL", "deepseek-coder") 
+        llm_to_use = f"ollama/{ollama_model}" # CrewAI/LiteLLM format
+        print(f"Configured to use Ollama model: '{llm_to_use}'.")
+        print("Ensure OLLAMA_MODEL environment variable is set to your specific model (e.g., 'deepseek-coder:6.7b').")
+        print("Ensure OLLAMA_BASE_URL environment variable is set if your Ollama instance is not at http://localhost:11434.")
     elif llm_choice == "gemini":
-        # Ensure GOOGLE_API_KEY environment variable is set.
-        try:
-            gemini_model = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")
-            llm_to_use = ChatGoogleGenerativeAI(model=gemini_model, temperature=0.7)
-            print(f"Using Google Gemini with model '{gemini_model}'.")
-        except Exception as e:
-            print(f"Error initializing Gemini: {e}. Proceeding without specific LLM.")
-            llm_to_use = None
-            
+        # User needs to ensure GEMINI_MODEL_NAME is set (e.g., "gemini-1.5-flash-latest")
+        # and GOOGLE_API_KEY is set.
+        gemini_model = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash-latest")
+        llm_to_use = f"gemini/{gemini_model}" # CrewAI/LiteLLM format
+        print(f"Configured to use Gemini model: '{llm_to_use}'.")
+        print("Ensure GEMINI_MODEL_NAME environment variable is set to your specific model (e.g., 'gemini-1.5-flash-latest').")
+        print("Ensure GOOGLE_API_KEY environment variable is set.")
     elif llm_choice == "openai":
-        # Ensure OPENAI_API_KEY is set. Optionally OPENAI_MODEL_NAME.
-        try:
-            # If OPENAI_API_KEY is set, CrewAI agents will use OpenAI by default if llm_instance is None.
-            # To explicitly specify a model or other parameters for OpenAI:
-            # llm_to_use = ChatOpenAI(model_name=os.getenv("OPENAI_MODEL_NAME", "gpt-3.5-turbo"), temperature=0.7)
-            # For this example, we'll let CrewAI handle OpenAI defaults if llm_to_use is None.
-            print("Using OpenAI. CrewAI will use its default OpenAI handling (ensure OPENAI_API_KEY is set).")
-            # If you want to explicitly set it (e.g. to a specific model):
-            # openai_model = os.getenv("OPENAI_MODEL_NAME", "gpt-4-turbo")
-            # llm_to_use = ChatOpenAI(model=openai_model) 
-            # print(f"Explicitly set OpenAI model to: {openai_model}")
-            pass # llm_to_use remains None, CrewAI handles OpenAI if API key is present and no other LLM is specified.
-        except Exception as e:
-            print(f"Error initializing OpenAI (explicitly): {e}. Proceeding with CrewAI default LLM handling.")
-            llm_to_use = None # Fallback to CrewAI default
+        # User needs to ensure OPENAI_API_KEY is set.
+        # Optionally, set OPENAI_MODEL_NAME to specify a model (e.g., "gpt-4o-mini").
+        # If OPENAI_MODEL_NAME is not set, CrewAI/LiteLLM uses a default (like gpt-4o-mini).
+        openai_model = os.getenv("OPENAI_MODEL_NAME")
+        if openai_model:
+            llm_to_use = openai_model # Directly use the model name string
+            print(f"Configured to use OpenAI model: '{llm_to_use}'.")
+        else:
+            # llm_to_use remains None. CrewAI/LiteLLM will use its default OpenAI model
+            # if OPENAI_API_KEY is available.
+            print("Configured for default OpenAI handling by CrewAI/LiteLLM.")
+        print("Ensure OPENAI_API_KEY environment variable is set.")
+        print("Optionally, set OPENAI_MODEL_NAME to specify a model (e.g., 'gpt-4o-mini', 'gpt-4-turbo').")
     else:
-        print(f"LLM choice '{llm_choice}' is invalid or not explicitly handled. CrewAI will use its default LLM.")
-        llm_to_use = None
+        print(f"Warning: LLM_CHOICE '{llm_choice}' not recognized. CrewAI will attempt its default LLM resolution (likely OpenAI if configured).")
+        # llm_to_use remains None, relying on CrewAI's global default or erroring if none configured.
     # --- End LLM Configuration ---
 
-    # 1. Create Agents (pass the chosen llm_to_use)
+    # 1. Create Agents (pass the chosen llm_to_use, which is now a string or None)
+    # The agent creation functions should pass this directly to the Agent's 'llm' parameter.
     planner_agent = create_project_planner_agent(llm_instance=llm_to_use)
     architect_agent = create_software_architect_agent(llm_instance=llm_to_use)
     coder_agent = create_code_writer_agent(llm_instance=llm_to_use)
@@ -191,8 +175,11 @@ def run_development_crew():
 
 if __name__ == "__main__":
     print(f"Executing main_crew_runner.py from CWD: {os.getcwd()}")
-    print("Ensure CrewAI is installed (`pip install crewai crewai-tools langchain-community langchain-google-genai langchain-openai`)")
-    print("LLM Choice: Set the 'llm_choice' variable in the script to 'ollama', 'gemini', or 'openai'.")
-    print("Ensure the chosen LLM is configured (e.g., Ollama server running, API keys like GOOGLE_API_KEY or OPENAI_API_KEY set).")
+    print("Ensure CrewAI is installed (`pip install crewai crewai-tools`)")
+    print("For LLM configuration, set the following environment variables as needed:")
+    print("  - LLM_CHOICE: 'ollama', 'gemini', or 'openai' (defaults to 'openai').")
+    print("  - For Ollama: OLLAMA_MODEL (e.g., 'deepseek-coder:6.7b'), OLLAMA_BASE_URL (if not default).")
+    print("  - For Gemini: GEMINI_MODEL_NAME (e.g., 'gemini-1.5-flash-latest'), GOOGLE_API_KEY.")
+    print("  - For OpenAI: OPENAI_API_KEY, optionally OPENAI_MODEL_NAME (e.g., 'gpt-4o-mini').")
     
     run_development_crew()
