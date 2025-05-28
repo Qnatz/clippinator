@@ -1,7 +1,6 @@
-from crewai_tools import tool
 import os
 
-@tool("Writes content to a specified file. Input should be a string with filename and content separated by a newline, e.g., 'my_file.txt\\nFile content here'. Alternatively, it can be a dictionary with 'filename' and 'content' keys, though direct string input is also handled for simpler LLM interaction.")
+# @tool("Writes content to a specified file. Input should be a string with filename and content separated by a newline, e.g., 'my_file.txt\\nFile content here'. Alternatively, it can be a dictionary with 'filename' and 'content' keys, though direct string input is also handled for simpler LLM interaction.")
 def write_file_tool(filename: str, content: str = None) -> str:
     """
     Writes content to a specified file.
@@ -37,7 +36,7 @@ def write_file_tool(filename: str, content: str = None) -> str:
     except Exception as e:
         return f"Error writing to {actual_filename}: {str(e)}"
 
-@tool("Reads content from a specified file. Input must be the filename.")
+# @tool("Reads content from a specified file. Input must be the filename.")
 def read_file_tool(filename: str) -> str:
     """
     Reads content from a specified file.

@@ -1,8 +1,7 @@
-from crewai_tools import tool
 import subprocess
 import os
 
-@tool("Executes a shell command and returns its output. Input must be the command string.")
+# @tool("Executes a shell command and returns its output. Input must be the command string.")
 def shell_command_tool(command: str) -> str:
     """
     Executes a shell command and returns its output.

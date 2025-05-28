@@ -1,0 +1,68 @@
+name: Coding Agents Flow
+description: A pyramid-structured AI crew to transform user ideas into production-ready code.
+
+agents:
+  - taskmaster
+  - planner
+  - architect
+  - codewriter
+  - frontendbuilder
+  - apidesigner
+  - tester
+  - debugger
+
+tasks:
+  - id: receive_idea
+    description: "Receive the user's high-level idea and break it into objectives."
+    agent: taskmaster
+    next: [plan_execution]
+
+  - id: plan_execution
+    description: "Generate a project execution plan with agent responsibilities."
+    agent: planner
+    next: [design_architecture]
+
+  - id: design_architecture
+    description: "Define project architecture, stack, modules, and data flow."
+    agent: architect
+    next: [write_api, write_frontend] # Parallel paths start here
+
+  - id: write_api
+    description: "Design and implement backend APIs."
+    agent: apidesigner
+    next: [code_writer_api]
+
+  - id: write_frontend
+    description: "Build frontend views, components, and state handling."
+    agent: frontendbuilder
+    next: [code_writer_ui]
+
+  - id: code_writer_api
+    description: "Convert API designs into working code."
+    agent: codewriter
+    next: [test_backend]
+
+  - id: code_writer_ui
+    description: "Convert frontend designs into functional code."
+    agent: codewriter # Could be a different codewriter specialized for UI
+    next: [test_frontend]
+
+  - id: test_backend
+    description: "Write and run backend tests."
+    agent: tester
+    next: [debug_backend] # Conditional on test failure
+
+  - id: test_frontend
+    description: "Write and run frontend tests."
+    agent: tester
+    next: [debug_frontend] # Conditional on test failure
+
+  - id: debug_backend
+    description: "Fix any issues found in backend."
+    agent: debugger
+    # next: [test_backend] # Could loop back to testing
+
+  - id: debug_frontend
+    description: "Fix any issues found in frontend."
+    agent: debugger
+    # next: [test_frontend] # Could loop back to testing

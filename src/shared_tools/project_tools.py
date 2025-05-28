@@ -1,8 +1,7 @@
 import os
-from crewai_tools import tool
 from datetime import datetime
 
-@tool("Get Project Summary Tool")
+# @tool("Get Project Summary Tool")
 def get_project_summary_tool(path: str = ".") -> str:
     """
     Provides a summary of the project directory structure and files.
@@ -48,7 +47,7 @@ def get_project_summary_tool(path: str = ".") -> str:
 
 MEMORY_FILE = "PROJECT_MEMORIES.log"
 
-@tool("Remember Fact Tool")
+# @tool("Remember Fact Tool")
 def remember_fact_tool(fact: str) -> str:
     """
     Records a fact or piece of information into a shared project memory log (PROJECT_MEMORIES.log).
